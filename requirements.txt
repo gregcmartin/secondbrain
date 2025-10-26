@@ -1,0 +1,42 @@
+# Core dependencies
+python-dotenv==1.0.0
+
+# CLI framework
+click==8.1.7
+rich==13.7.0
+
+# Image processing
+Pillow==10.1.0
+
+# OpenAI API
+openai==1.12.0
+
+# macOS APIs for screen capture and window metadata
+pyobjc-framework-Quartz==10.1  # Screen capture
+pyobjc-framework-Cocoa==10.1   # macOS APIs
+
+# Database
+sqlite-utils==3.36
+
+# Vector embeddings and search
+sentence-transformers==2.2.2
+chromadb==0.4.22
+numpy==1.26.2
+
+# Async and concurrency
+aiofiles==23.2.1
+
+# Utilities
+python-dateutil==2.8.2
+psutil==5.9.6  # System monitoring
+
+# Development and testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+black==23.12.1
+flake8==6.1.0
+mypy==1.7.1
+
+# Logging
+structlog==23.2.0
