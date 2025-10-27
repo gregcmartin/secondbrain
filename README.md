@@ -14,7 +14,7 @@ Goal: capture → OCR → index → query loop that runs entirely on macOS and p
   - Implement watchdog and disk quotas so the service pauses when free space drops below safety threshold.
 
 - **OCR + text enrichment (Week 1–2)**
-  - Run Apple VisionKit (preferred) or Tesseract with `--psm 6 --oem 1` over each frame, storing block-level coordinates.
+  - Use OpenAI GPT-5 vision OCR for each frame, storing block-level coordinates and semantic context.
   - Extract dominant colors / UI heuristics (code editor theme, dark/light mode).
   - Normalize text: dedupe whitespace, bucket into logical panes (window title, tab bar, main content, terminal output).
 
@@ -77,4 +77,4 @@ Outcome: self-hosted, high-resolution “visual memory” UI that rivals Rewind�
 
 1. Decide whether to start with the pipeline CLI or jump straight to the timeline stack.
 2. Spin up a `docs/architecture/` folder to capture decisions, APIs, and data schema.
-3. Bootstrap the capture daemon and storage schema; keep sample frames checked in for regression tests.
+3. Bootstrap the capture service and storage schema; keep sample frames checked in for regression tests.

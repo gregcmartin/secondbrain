@@ -239,7 +239,7 @@ class Database:
                 tb.bbox_y,
                 tb.bbox_width,
                 tb.bbox_height,
-                text_blocks_fts.rank
+                bm25(text_blocks_fts) AS score
             FROM text_blocks_fts
             JOIN text_blocks tb ON text_blocks_fts.rowid = tb.rowid
             JOIN frames f ON tb.frame_id = f.frame_id
@@ -260,7 +260,7 @@ class Database:
             sql += " AND f.timestamp <= ?"
             params.append(end_timestamp)
         
-        sql += " ORDER BY text_blocks_fts.rank, f.timestamp DESC LIMIT ?"
+        sql += " ORDER BY score, f.timestamp DESC LIMIT ?"
         params.append(limit)
         
         cursor = self.conn.cursor()

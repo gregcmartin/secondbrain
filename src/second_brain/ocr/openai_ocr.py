@@ -46,6 +46,7 @@ class OpenAIOCR:
         self.rate_limit_rpm = self.config.get("ocr.rate_limit_rpm", 50)
         self.min_request_interval = 60.0 / self.rate_limit_rpm
         self.last_request_time = 0.0
+        self._rate_limit_lock = asyncio.Lock()
         
         logger.info("openai_ocr_initialized", model=self.model, rate_limit_rpm=self.rate_limit_rpm)
 
@@ -94,15 +95,16 @@ Be thorough and accurate. If text is unclear, note it in the semantic_context.""
 
     async def _rate_limit(self) -> None:
         """Enforce rate limiting between requests."""
-        current_time = time.time()
-        time_since_last_request = current_time - self.last_request_time
-        
-        if time_since_last_request < self.min_request_interval:
-            sleep_time = self.min_request_interval - time_since_last_request
-            logger.debug("rate_limiting", sleep_seconds=sleep_time)
-            await asyncio.sleep(sleep_time)
-        
-        self.last_request_time = time.time()
+        async with self._rate_limit_lock:
+            current_time = time.time()
+            time_since_last_request = current_time - self.last_request_time
+            
+            if time_since_last_request < self.min_request_interval:
+                sleep_time = self.min_request_interval - time_since_last_request
+                logger.debug("rate_limiting", sleep_seconds=sleep_time)
+                await asyncio.sleep(sleep_time)
+            
+            self.last_request_time = time.time()
 
     async def extract_text(
         self, image_path: Path, frame_id: str
@@ -274,24 +276,15 @@ Be thorough and accurate. If text is unclear, note it in the semantic_context.""
         Returns:
             List of text block lists (one per image)
         """
-        tasks = [
-            self.extract_text(image_path, frame_id)
-            for image_path, frame_id in image_paths
-        ]
-        
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Filter out exceptions
-        processed_results = []
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
+        processed_results: List[List[Dict[str, Any]]] = []
+        for index, (image_path, frame_id) in enumerate(image_paths):
+            try:
+                processed_results.append(await self.extract_text(image_path, frame_id))
+            except Exception as exc:
                 logger.error(
                     "batch_processing_error",
-                    index=i,
-                    error=str(result),
+                    index=index,
+                    error=str(exc),
                 )
                 processed_results.append([])
-            else:
-                processed_results.append(result)
-        
         return processed_results

@@ -88,8 +88,7 @@ def main():
 
 @main.command()
 @click.option("--fps", type=float, help="Frames per second to capture")
-@click.option("--daemon", is_flag=True, help="Run as daemon (background process)")
-def start(fps: Optional[float], daemon: bool):
+def start(fps: Optional[float]):
     """Start the capture service."""
     if is_running():
         console.print("[yellow]Service is already running[/yellow]")

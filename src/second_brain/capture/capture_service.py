@@ -13,6 +13,8 @@ import psutil
 import structlog
 from Quartz import (
     CGWindowListCopyWindowInfo,
+    CGDisplayBounds,
+    CGMainDisplayID,
     kCGWindowListOptionOnScreenOnly,
     kCGNullWindowID,
 )
@@ -33,6 +35,7 @@ class CaptureService:
         """
         self.config = config or Config()
         self.config.ensure_directories()
+        self.frames_dir = self.config.get_frames_dir()
         
         # Configuration
         self.fps = self.config.get("capture.fps", 1)
@@ -45,6 +48,8 @@ class CaptureService:
         self.running = False
         self.frames_captured = 0
         self.last_capture_time = 0.0
+        self._screen_resolution_cache: Optional[str] = None
+        self._frames_dir_usage_bytes = self._calculate_frames_dir_size()
         
         logger.info(
             "capture_service_initialized",
@@ -52,6 +57,19 @@ class CaptureService:
             format=self.format,
             max_disk_gb=self.max_disk_usage_gb,
         )
+
+    def _calculate_frames_dir_size(self) -> int:
+        """Calculate total size of frames directory once at startup."""
+        total_size = 0
+        if not self.frames_dir.exists():
+            return total_size
+        for path in self.frames_dir.rglob("*"):
+            if path.is_file():
+                try:
+                    total_size += path.stat().st_size
+                except OSError:
+                    continue
+        return total_size
 
     def _get_active_window_info(self) -> Dict[str, Any]:
         """Get information about the active window using macOS APIs.
@@ -111,29 +129,35 @@ class CaptureService:
         Returns:
             Resolution string like "1920x1080"
         """
+        if self._screen_resolution_cache:
+            return self._screen_resolution_cache
+        
         try:
-            # Use system_profiler to get display info
-            result = subprocess.run(
-                ["system_profiler", "SPDisplaysDataType"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            
-            # Parse output for resolution (simplified)
-            for line in result.stdout.split("\n"):
-                if "Resolution" in line:
-                    # Extract resolution like "1920 x 1080"
-                    parts = line.split(":")
-                    if len(parts) > 1:
-                        res = parts[1].strip().replace(" ", "")
-                        return res
-            
-            return "unknown"
-            
-        except Exception as e:
-            logger.error("failed_to_get_resolution", error=str(e))
-            return "unknown"
+            bounds = CGDisplayBounds(CGMainDisplayID())
+            width = int(bounds.size.width)
+            height = int(bounds.size.height)
+            self._screen_resolution_cache = f"{width}x{height}"
+            return self._screen_resolution_cache
+        except Exception as error:
+            logger.error("failed_to_get_resolution", error=str(error))
+            # Fall back to system_profiler (only once)
+            try:
+                result = subprocess.run(
+                    ["system_profiler", "SPDisplaysDataType"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                for line in result.stdout.split("\n"):
+                    if "Resolution" in line:
+                        parts = line.split(":")
+                        if len(parts) > 1:
+                            self._screen_resolution_cache = parts[1].strip().replace(" ", "")
+                            return self._screen_resolution_cache
+            except Exception as fallback_error:
+                logger.error("resolution_fallback_failed", error=str(fallback_error))
+        self._screen_resolution_cache = "unknown"
+        return self._screen_resolution_cache
 
     def _check_disk_space(self) -> bool:
         """Check if there's enough disk space to continue capturing.
@@ -143,8 +167,7 @@ class CaptureService:
         """
         try:
             # Get disk usage for the frames directory
-            frames_dir = self.config.get_frames_dir()
-            disk_usage = psutil.disk_usage(str(frames_dir))
+            disk_usage = psutil.disk_usage(str(self.frames_dir))
             
             # Calculate free space in GB
             free_gb = disk_usage.free / (1024 ** 3)
@@ -158,13 +181,8 @@ class CaptureService:
                 )
                 return False
             
-            # Check total usage of frames directory
-            total_size = 0
-            for path in frames_dir.rglob("*"):
-                if path.is_file():
-                    total_size += path.stat().st_size
-            
-            total_gb = total_size / (1024 ** 3)
+            # Check cached usage of frames directory
+            total_gb = self._frames_dir_usage_bytes / (1024 ** 3)
             
             if total_gb > self.max_disk_usage_gb:
                 logger.warning(
@@ -189,10 +207,8 @@ class CaptureService:
         Returns:
             Path to save the frame
         """
-        frames_dir = self.config.get_frames_dir()
-        
         # Create directory structure: YYYY/MM/DD/
-        date_dir = frames_dir / timestamp.strftime("%Y/%m/%d")
+        date_dir = self.frames_dir / timestamp.strftime("%Y/%m/%d")
         date_dir.mkdir(parents=True, exist_ok=True)
         
         # Create filename: HH-MM-SS-mmm.png
@@ -233,6 +249,7 @@ class CaptureService:
             
             # Get file size
             file_size = frame_path.stat().st_size
+            self._frames_dir_usage_bytes += file_size
             
             # Get window info
             window_info = self._get_active_window_info()
@@ -248,7 +265,7 @@ class CaptureService:
                 "window_title": window_info["window_title"],
                 "app_bundle_id": window_info["app_bundle_id"],
                 "app_name": window_info["app_name"],
-                "file_path": str(frame_path.relative_to(self.config.get_frames_dir())),
+                "file_path": str(frame_path.relative_to(self.frames_dir)),
                 "file_size_bytes": file_size,
                 "screen_resolution": screen_resolution,
             }
@@ -257,6 +274,10 @@ class CaptureService:
             metadata_path = frame_path.with_suffix(".json")
             with open(metadata_path, "w") as f:
                 json.dump(metadata, f, indent=2)
+            try:
+                self._frames_dir_usage_bytes += metadata_path.stat().st_size
+            except OSError:
+                pass
             
             self.frames_captured += 1
             self.last_capture_time = time.time()
