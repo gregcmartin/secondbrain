@@ -5,6 +5,7 @@
 - macOS (required for screen capture APIs)
 - Python 3.11 or higher
 - OpenAI API key
+- Node.js 20 or higher (for building the timeline UI)
 
 ## Installation
 
@@ -38,6 +39,15 @@ pip install -e .
 
 ```bash
 second-brain --help
+```
+
+### 6. Build the Timeline UI (Optional but recommended)
+
+```bash
+cd web/timeline
+npm install
+npm run build
+cd ../..
 ```
 
 ## Configuration
@@ -123,6 +133,13 @@ second-brain query "search term" --from "2025-10-20" --to "2025-10-26"
 second-brain query "search term" --semantic
 ```
 
+### Launch the Timeline UI
+
+```bash
+# Start API + UI (opens browser)
+second-brain timeline --host 127.0.0.1 --port 8000
+```
+
 ### Stop the Service
 
 ```bash
@@ -184,10 +201,10 @@ If you hit rate limits:
 
 ## Next Steps
 
-1. Implement the capture service (Week 1, Days 3-4)
-2. Integrate OCR pipeline with capture loop (Week 1, Days 5-7)
-3. Build CLI interface (Week 3)
-4. Set up launchd for background service (Week 4)
+1. Start the capture service with `second-brain start`.
+2. Run `second-brain status` after a few minutes to verify frames and text blocks are recorded.
+3. Build and launch the timeline UI (`npm run build` then `second-brain timeline`) for visual exploration.
+4. Configure launchd using `scripts/install.sh` if you want the service to start automatically on login.
 
 ## Cost Estimates
 

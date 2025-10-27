@@ -20,6 +20,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from .config import Config
 from .database import Database
 from .pipeline import ProcessingPipeline
+from .embeddings import EmbeddingService
 
 # Load environment variables
 load_dotenv()
@@ -220,11 +221,12 @@ def status():
 
 @main.command()
 @click.argument("query")
-@click.option("--app", help="Filter by application name")
+@click.option("--app", help="Filter by application bundle ID")
 @click.option("--from", "from_date", help="Start date (YYYY-MM-DD)")
 @click.option("--to", "to_date", help="End date (YYYY-MM-DD)")
 @click.option("--limit", default=10, help="Maximum number of results")
-def query(query: str, app: Optional[str], from_date: Optional[str], to_date: Optional[str], limit: int):
+@click.option("--semantic", is_flag=True, help="Use semantic vector search")
+def query(query: str, app: Optional[str], from_date: Optional[str], to_date: Optional[str], limit: int, semantic: bool):
     """Search captured memory."""
     console.print(f"[cyan]Searching for:[/cyan] {query}")
     
@@ -252,33 +254,82 @@ def query(query: str, app: Optional[str], from_date: Optional[str], to_date: Opt
     try:
         db = Database()
         
+        display_results = []
+
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
             progress.add_task(description="Searching...", total=None)
-            
-            results = db.search_text(
-                query=query,
-                app_filter=app,
-                start_timestamp=start_timestamp,
-                end_timestamp=end_timestamp,
-                limit=limit,
-            )
-        
-        if not results:
+
+            if semantic:
+                embedding_service = EmbeddingService()
+                matches = embedding_service.search(
+                    query=query,
+                    limit=limit,
+                    app_filter=app,
+                )
+
+                for match in matches:
+                    frame = db.get_frame(match["frame_id"])
+                    if not frame:
+                        continue
+                    block = db.get_text_block(match["block_id"])
+                    if not block:
+                        continue
+                    display_results.append(
+                        {
+                            "window_title": frame.get("window_title") or "Untitled",
+                            "app_name": frame.get("app_name") or "Unknown",
+                            "timestamp": frame.get("timestamp"),
+                            "text": block.get("text", ""),
+                            "score": 1 - match.get("distance", 0.0) if match.get("distance") is not None else None,
+                            "method": "semantic",
+                        }
+                    )
+            else:
+                results = db.search_text(
+                    query=query,
+                    app_filter=app,
+                    start_timestamp=start_timestamp,
+                    end_timestamp=end_timestamp,
+                    limit=limit,
+                )
+                for result in results:
+                    display_results.append(
+                        {
+                            "window_title": result.get("window_title") or "Untitled",
+                            "app_name": result.get("app_name") or "Unknown",
+                            "timestamp": result.get("timestamp"),
+                            "text": result.get("text", ""),
+                            "score": result.get("score"),
+                            "method": "fts",
+                        }
+                    )
+
+        if not display_results:
             console.print("[yellow]No results found[/yellow]")
             return
         
-        console.print(f"\n[green]Found {len(results)} results:[/green]\n")
+        console.print(f"\n[green]Found {len(display_results)} results:[/green]\n")
         
-        for i, result in enumerate(results, 1):
+        for i, result in enumerate(display_results, 1):
             timestamp = datetime.fromtimestamp(result["timestamp"])
+            score_line = ""
+            raw_score = result.get("score")
+            if raw_score is not None:
+                if result["method"] == "semantic":
+                    score_label = "Similarity"
+                    display_score = raw_score
+                else:
+                    score_label = "Relevance"
+                    display_score = 1 / (1 + raw_score) if raw_score >= 0 else raw_score
+                score_line = f"\n[dim]{score_label}: {display_score:.3f}[/dim]"
             
             panel = Panel(
                 f"[bold]{result['window_title']}[/bold]\n"
-                f"[dim]{result['app_name']} • {timestamp.strftime('%Y-%m-%d %H:%M:%S')}[/dim]\n\n"
+                f"[dim]{result['app_name']} • {timestamp.strftime('%Y-%m-%d %H:%M:%S')}[/dim]{score_line}\n\n"
                 f"{result['text'][:200]}{'...' if len(result['text']) > 200 else ''}",
                 title=f"Result {i}",
                 border_style="cyan",
@@ -341,6 +392,42 @@ def health():
         table.add_row(component, f"[{color}]{status}[/{color}]")
     
     console.print(table)
+
+
+@main.command()
+@click.option("--host", default="127.0.0.1", show_default=True)
+@click.option("--port", default=8000, show_default=True, type=int)
+@click.option("--no-open", is_flag=True, help="Do not open the browser automatically")
+def timeline(host: str, port: int, no_open: bool):
+    """Launch the timeline visualization server."""
+    try:
+        from uvicorn import Config as UvicornConfig, Server as UvicornServer
+    except ImportError as exc:
+        console.print("[red]uvicorn is not installed. Please install with `pip install uvicorn`.[/red]")
+        raise click.ClickException(str(exc))
+
+    from .api.server import create_app
+
+    app = create_app()
+    config = UvicornConfig(app=app, host=host, port=port, log_level="info")
+    server = UvicornServer(config)
+
+    url = f"http://{host}:{port}"
+    console.print(f"[green]Timeline server available at {url}[/green]")
+    console.print("[dim]Press Ctrl+C to stop[/dim]")
+
+    if not no_open:
+        import webbrowser
+
+        try:
+            webbrowser.open(url)
+        except Exception:
+            console.print("[yellow]Unable to open browser automatically[/yellow]")
+
+    try:
+        asyncio.run(server.serve())
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Shutting down timeline server...[/yellow]")
 
 
 if __name__ == "__main__":

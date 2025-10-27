@@ -11,6 +11,7 @@ from ..capture import CaptureService
 from ..config import Config
 from ..database import Database
 from ..ocr import OpenAIOCR
+from ..embeddings import EmbeddingService
 
 logger = structlog.get_logger()
 
@@ -30,6 +31,7 @@ class ProcessingPipeline:
         self.capture_service = CaptureService(self.config)
         self.ocr_service = OpenAIOCR(self.config)
         self.database = Database(config=self.config)
+        self.embedding_service = EmbeddingService(self.config)
         
         # OCR queue
         self.ocr_queue: deque = deque()
@@ -123,6 +125,15 @@ class ProcessingPipeline:
                         # Insert text blocks if any
                         if text_blocks:
                             self.database.insert_text_blocks(text_blocks)
+                            # Index embeddings after successful DB write
+                            try:
+                                self.embedding_service.index_text_blocks(metadata, text_blocks)
+                            except Exception as embed_error:
+                                logger.error(
+                                    "embedding_index_failed",
+                                    frame_id=metadata["frame_id"],
+                                    error=str(embed_error),
+                                )
                         
                         # Update window tracking
                         self.database.update_window_tracking(

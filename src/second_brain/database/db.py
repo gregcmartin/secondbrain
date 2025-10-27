@@ -201,6 +201,53 @@ class Database:
         """, (frame_id,))
         return [dict(row) for row in cursor.fetchall()]
 
+    def get_text_block(self, block_id: str) -> Optional[Dict[str, Any]]:
+        """Get a single text block by ID."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT * FROM text_blocks WHERE block_id = ?",
+            (block_id,),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def get_frames(
+        self,
+        limit: int = 500,
+        app_bundle_id: Optional[str] = None,
+        start_timestamp: Optional[int] = None,
+        end_timestamp: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """Retrieve frames with optional filtering."""
+        sql = """
+            SELECT *
+            FROM frames
+        """
+        clauses: List[str] = []
+        params: List[Any] = []
+
+        if app_bundle_id:
+            clauses.append("app_bundle_id = ?")
+            params.append(app_bundle_id)
+
+        if start_timestamp:
+            clauses.append("timestamp >= ?")
+            params.append(start_timestamp)
+
+        if end_timestamp:
+            clauses.append("timestamp <= ?")
+            params.append(end_timestamp)
+
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+
+        sql += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(limit)
+
+        cursor = self.conn.cursor()
+        cursor.execute(sql, params)
+        return [dict(row) for row in cursor.fetchall()]
+
     # Search operations
     
     def search_text(

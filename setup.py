@@ -13,6 +13,8 @@ setup(
         "click>=8.1.7",
         "rich>=13.7.0",
         "openai>=1.12.0",
+        "fastapi>=0.110.0",
+        "uvicorn[standard]>=0.25.0",
         "pyobjc-framework-Quartz>=10.1",
         "pyobjc-framework-Cocoa>=10.1",
         "sqlite-utils>=3.36",
