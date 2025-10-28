@@ -41,7 +41,7 @@ class CaptureService:
         
         # Configuration
         self.fps = self.config.get("capture.fps", 1)
-        self.format = self.config.get("capture.format", "png")
+        self.format = self.config.get("capture.format", "webp")  # WebP for 25-35% savings
         self.quality = self.config.get("capture.quality", 85)
         self.max_disk_usage_gb = self.config.get("capture.max_disk_usage_gb", 100)
         self.min_free_space_gb = self.config.get("capture.min_free_space_gb", 10)
@@ -258,9 +258,10 @@ class CaptureService:
         frame_path = self._get_frame_path(timestamp)
         
         try:
-            # Capture screenshot using screencapture
+            # Capture screenshot using screencapture (always outputs PNG)
+            temp_png_path = frame_path.with_suffix('.png')
             result = subprocess.run(
-                ["screencapture", "-x", str(frame_path)],
+                ["screencapture", "-x", str(temp_png_path)],
                 capture_output=True,
                 timeout=5,
             )
@@ -268,6 +269,20 @@ class CaptureService:
             if result.returncode != 0:
                 logger.error("screencapture_failed", returncode=result.returncode)
                 return None
+            
+            # Convert to WebP if format is webp
+            if self.format == "webp":
+                try:
+                    from PIL import Image
+                    img = Image.open(temp_png_path)
+                    img.save(frame_path, 'WEBP', quality=self.quality, method=6)
+                    temp_png_path.unlink()  # Delete temp PNG
+                except Exception as e:
+                    logger.error("webp_conversion_failed", error=str(e))
+                    # Fall back to PNG
+                    frame_path = temp_png_path
+            else:
+                frame_path = temp_png_path
             
             # Check if frame should be kept (frame change detection)
             if self.frame_differ and not self.frame_differ.should_capture_frame(frame_path):

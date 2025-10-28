@@ -378,6 +378,56 @@ def query(query: str, app: Optional[str], from_date: Optional[str], to_date: Opt
 
 
 @main.command()
+@click.option("--date", help="Date to convert (YYYY-MM-DD). If not provided, converts yesterday.")
+@click.option("--keep-frames", is_flag=True, help="Keep original frames after conversion")
+def convert_to_video(date: Optional[str], keep_frames: bool):
+    """Convert captured frames to H.264 video for storage efficiency."""
+    from datetime import datetime, timedelta
+    from .video.simple_video_capture import VideoConverter
+    
+    # Parse date or use yesterday
+    if date:
+        try:
+            target_date = datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            console.print(f"[red]Invalid date format. Use YYYY-MM-DD[/red]")
+            return
+    else:
+        target_date = datetime.now() - timedelta(days=1)
+    
+    console.print(f"[cyan]Converting frames from {target_date.strftime('%Y-%m-%d')} to H.264 video...[/cyan]")
+    
+    # Create converter
+    config = Config()
+    if keep_frames:
+        config.set("video.delete_frames_after_conversion", False)
+    else:
+        config.set("video.delete_frames_after_conversion", True)
+    
+    converter = VideoConverter(config)
+    
+    # Check ffmpeg
+    if not converter._check_ffmpeg_available():
+        console.print("[red]ffmpeg is not installed. Install with: brew install ffmpeg[/red]")
+        return
+    
+    # Convert
+    async def do_conversion():
+        result = await converter.convert_day_to_video(target_date)
+        if result:
+            console.print(f"[green]✓ Video created: {result}[/green]")
+            if not keep_frames:
+                console.print(f"[yellow]Original frames deleted to save space[/yellow]")
+        else:
+            console.print(f"[red]✗ Conversion failed[/red]")
+    
+    try:
+        asyncio.run(do_conversion())
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+
+
+@main.command()
 def health():
     """Check system health."""
     console.print("[cyan]Checking system health...[/cyan]\n")
