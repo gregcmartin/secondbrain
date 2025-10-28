@@ -29,12 +29,17 @@ load_dotenv()
 
 # Configure structlog with log level filtering
 def filter_by_level(logger, method_name, event_dict):
-    """Filter out debug logs unless DEBUG environment variable is set."""
+    """Filter logs based on DEBUG environment variable.
+    
+    By default, only show warnings and errors.
+    Set DEBUG=1 to see all logs including info and debug.
+    """
     if os.getenv("DEBUG", "").lower() in ("1", "true", "yes"):
         return event_dict
     
-    # Filter out debug level logs
-    if event_dict.get("level") == "debug":
+    # Filter out debug and info level logs by default
+    level = event_dict.get("level")
+    if level in ("debug", "info"):
         raise structlog.DropEvent
     
     return event_dict
