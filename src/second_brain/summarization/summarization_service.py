@@ -133,7 +133,7 @@ Provide a brief 2-3 sentence summary."""
                     }
                 ],
                 max_completion_tokens=300,
-                temperature=0.7,
+                # GPT-5 only supports temperature=1 (default), so we omit it
             )
             
             summary = response.choices[0].message.content
