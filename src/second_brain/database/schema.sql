@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS text_blocks (
     frame_id TEXT NOT NULL,
     text TEXT NOT NULL,
     normalized_text TEXT,
+    text_compressed BLOB,  -- zlib compressed text for storage efficiency
     confidence REAL,
     bbox_x INTEGER,
     bbox_y INTEGER,

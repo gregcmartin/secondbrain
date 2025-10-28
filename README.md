@@ -155,6 +155,8 @@ Key config knobs (editable via `~/.config/second-brain/settings.json`):
 }
 ```
 
+> Note: GPT-5 vision is the only supported OCR model; any overrides are ignored.
+
 Adjust FPS to manage API costs, and tweak disk guardrails to suit your storage budget. The capture service keeps a rolling byte counter and will pause automatically if free space is scarce or the configured quota is exceeded.
 
 ---

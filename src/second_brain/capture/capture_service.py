@@ -20,6 +20,8 @@ from Quartz import (
 )
 
 from ..config import Config
+from .frame_differ import FrameDiffer
+from .activity_monitor import ActivityMonitor
 
 logger = structlog.get_logger()
 
@@ -44,9 +46,29 @@ class CaptureService:
         self.max_disk_usage_gb = self.config.get("capture.max_disk_usage_gb", 100)
         self.min_free_space_gb = self.config.get("capture.min_free_space_gb", 10)
         
+        # Smart capture - frame change detection
+        self.enable_frame_diff = self.config.get("capture.enable_frame_diff", True)
+        self.frame_differ: Optional[FrameDiffer] = None
+        if self.enable_frame_diff:
+            similarity_threshold = self.config.get("capture.similarity_threshold", 0.95)
+            self.frame_differ = FrameDiffer(similarity_threshold=similarity_threshold)
+        
+        # Adaptive FPS - adjust capture rate based on activity
+        self.enable_adaptive_fps = self.config.get("capture.enable_adaptive_fps", True)
+        self.activity_monitor: Optional[ActivityMonitor] = None
+        if self.enable_adaptive_fps:
+            idle_threshold = self.config.get("capture.idle_threshold_seconds", 30.0)
+            idle_fps = self.config.get("capture.idle_fps", 0.2)
+            self.activity_monitor = ActivityMonitor(
+                idle_threshold_seconds=idle_threshold,
+                active_fps=self.fps,
+                idle_fps=idle_fps,
+            )
+        
         # State
         self.running = False
         self.frames_captured = 0
+        self.frames_skipped = 0
         self.last_capture_time = 0.0
         self._screen_resolution_cache: Optional[str] = None
         self._frames_dir_usage_bytes = self._calculate_frames_dir_size()
@@ -247,6 +269,13 @@ class CaptureService:
                 logger.error("screencapture_failed", returncode=result.returncode)
                 return None
             
+            # Check if frame should be kept (frame change detection)
+            if self.frame_differ and not self.frame_differ.should_capture_frame(frame_path):
+                # Frame is too similar to previous - delete it and skip
+                frame_path.unlink()
+                self.frames_skipped += 1
+                return None
+            
             # Get file size
             file_size = frame_path.stat().st_size
             self._frames_dir_usage_bytes += file_size
@@ -299,14 +328,19 @@ class CaptureService:
             return None
 
     async def capture_loop(self):
-        """Main capture loop that runs continuously."""
-        logger.info("capture_loop_started", fps=self.fps)
+        """Main capture loop that runs continuously with adaptive FPS."""
+        logger.info("capture_loop_started", fps=self.fps, adaptive_fps=self.enable_adaptive_fps)
         self.running = True
-        
-        interval = 1.0 / self.fps
         
         while self.running:
             loop_start = time.time()
+            
+            # Get current FPS (adaptive or fixed)
+            current_fps = self.fps
+            if self.activity_monitor:
+                current_fps = self.activity_monitor.get_adaptive_fps()
+            
+            interval = 1.0 / current_fps
             
             # Capture frame
             await self.capture_frame()
@@ -318,7 +352,7 @@ class CaptureService:
             if sleep_time > 0:
                 await asyncio.sleep(sleep_time)
         
-        logger.info("capture_loop_stopped", total_frames=self.frames_captured)
+        logger.info("capture_loop_stopped", total_frames=self.frames_captured, frames_skipped=self.frames_skipped)
 
     def stop(self):
         """Stop the capture loop."""
@@ -331,10 +365,25 @@ class CaptureService:
         Returns:
             Dictionary with statistics
         """
-        return {
+        stats = {
             "running": self.running,
             "frames_captured": self.frames_captured,
+            "frames_skipped": self.frames_skipped,
             "fps": self.fps,
             "last_capture_time": self.last_capture_time,
             "uptime_seconds": time.time() - self.last_capture_time if self.last_capture_time > 0 else 0,
         }
+        
+        # Add frame differ stats if enabled
+        if self.frame_differ:
+            differ_stats = self.frame_differ.get_stats()
+            stats["frame_differ"] = differ_stats
+            stats["storage_saved_percent"] = differ_stats.get("storage_saved_percent", 0)
+        
+        # Add activity monitor stats if enabled
+        if self.activity_monitor:
+            activity_stats = self.activity_monitor.get_stats()
+            stats["activity_monitor"] = activity_stats
+            stats["current_fps"] = activity_stats.get("current_fps", self.fps)
+        
+        return stats

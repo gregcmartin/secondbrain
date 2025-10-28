@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 import click
+import psutil
 import structlog
 from dotenv import load_dotenv
 from rich.console import Console
@@ -19,8 +20,9 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from .config import Config
 from .database import Database
-from .pipeline import ProcessingPipeline
-from .embeddings import EmbeddingService
+# Lazy imports for heavy dependencies
+# from .pipeline import ProcessingPipeline
+# from .embeddings import EmbeddingService
 
 # Load environment variables
 load_dotenv()
@@ -32,7 +34,6 @@ structlog.configure(
         structlog.processors.add_log_level,
         structlog.processors.JSONRenderer(),
     ],
-    wrapper_class=structlog.make_filtering_bound_logger(logging_level=20),
     context_class=dict,
     logger_factory=structlog.PrintLoggerFactory(),
     cache_logger_on_first_use=True,
@@ -47,20 +48,40 @@ def get_pid_file() -> Path:
     return Path.home() / "Library" / "Application Support" / "second-brain" / "second-brain.pid"
 
 
+def _read_pid_file(pid_file: Path) -> tuple[int, Optional[float]]:
+    """Read PID file and return PID with optional create time."""
+    pid_raw = pid_file.read_text().strip()
+    expected_create_time: Optional[float] = None
+
+    if ":" in pid_raw:
+        pid_part, create_time_part = pid_raw.split(":", 1)
+        pid = int(pid_part)
+        try:
+            expected_create_time = float(create_time_part)
+        except ValueError:
+            expected_create_time = None
+    else:
+        pid = int(pid_raw)
+
+    return pid, expected_create_time
+
+
 def is_running() -> bool:
     """Check if service is running."""
     pid_file = get_pid_file()
     if not pid_file.exists():
         return False
-    
+
     try:
-        with open(pid_file, "r") as f:
-            pid = int(f.read().strip())
-        
-        # Check if process exists
-        os.kill(pid, 0)
+        pid, expected_create_time = _read_pid_file(pid_file)
+        process = psutil.Process(pid)
+        if expected_create_time is not None:
+            # Allow slight drift in floating point representation
+            if abs(process.create_time() - expected_create_time) > 0.5:
+                raise psutil.NoSuchProcess(pid)
+
         return True
-    except (OSError, ValueError):
+    except (ValueError, psutil.Error, OSError):
         # Process doesn't exist or PID file is invalid
         pid_file.unlink(missing_ok=True)
         return False
@@ -70,8 +91,10 @@ def save_pid():
     """Save current process PID."""
     pid_file = get_pid_file()
     pid_file.parent.mkdir(parents=True, exist_ok=True)
+    process = psutil.Process(os.getpid())
+    payload = f"{process.pid}:{process.create_time()}"
     with open(pid_file, "w") as f:
-        f.write(str(os.getpid()))
+        f.write(payload)
 
 
 def remove_pid():
@@ -106,6 +129,9 @@ def start(fps: Optional[float]):
     
     # Save PID
     save_pid()
+    
+    # Lazy import heavy dependencies only when needed
+    from .pipeline import ProcessingPipeline
     
     # Create pipeline
     pipeline = ProcessingPipeline(config)
@@ -152,10 +178,14 @@ def stop():
     if not is_running():
         console.print("[yellow]Service is not running[/yellow]")
         return
-    
+
     pid_file = get_pid_file()
-    with open(pid_file, "r") as f:
-        pid = int(f.read().strip())
+    try:
+        pid, _ = _read_pid_file(pid_file)
+    except (OSError, ValueError):
+        console.print("[red]PID file is corrupted or missing[/red]")
+        remove_pid()
+        return
     
     try:
         os.kill(pid, signal.SIGTERM)
@@ -264,6 +294,9 @@ def query(query: str, app: Optional[str], from_date: Optional[str], to_date: Opt
             progress.add_task(description="Searching...", total=None)
 
             if semantic:
+                # Lazy import heavy dependencies only when needed
+                from .embeddings import EmbeddingService
+                
                 embedding_service = EmbeddingService()
                 matches = embedding_service.search(
                     query=query,
@@ -372,16 +405,21 @@ def health():
         checks.append(("Database", f"✗ Error: {e}", "red"))
     
     # Check disk space
-    import psutil
-    config = Config()
-    frames_dir = config.get_frames_dir()
-    disk = psutil.disk_usage(str(frames_dir))
-    free_gb = disk.free / (1024 ** 3)
-    
-    if free_gb > config.get("capture.min_free_space_gb", 10):
-        checks.append(("Disk Space", f"✓ {free_gb:.1f} GB free", "green"))
-    else:
-        checks.append(("Disk Space", f"✗ Only {free_gb:.1f} GB free", "red"))
+    try:
+        import psutil
+        config = Config()
+        frames_dir = config.get_frames_dir()
+        # Create directory if it doesn't exist
+        frames_dir.mkdir(parents=True, exist_ok=True)
+        disk = psutil.disk_usage(str(frames_dir))
+        free_gb = disk.free / (1024 ** 3)
+        
+        if free_gb > config.get("capture.min_free_space_gb", 10):
+            checks.append(("Disk Space", f"✓ {free_gb:.1f} GB free", "green"))
+        else:
+            checks.append(("Disk Space", f"✗ Only {free_gb:.1f} GB free", "red"))
+    except Exception as e:
+        checks.append(("Disk Space", f"✗ Error: {e}", "red"))
     
     # Display results
     table = Table(title="Health Check")

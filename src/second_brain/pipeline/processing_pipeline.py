@@ -10,7 +10,7 @@ import structlog
 from ..capture import CaptureService
 from ..config import Config
 from ..database import Database
-from ..ocr import OpenAIOCR
+from ..ocr import AppleVisionOCR
 from ..embeddings import EmbeddingService
 
 logger = structlog.get_logger()
@@ -29,7 +29,7 @@ class ProcessingPipeline:
         
         # Initialize components
         self.capture_service = CaptureService(self.config)
-        self.ocr_service = OpenAIOCR(self.config)
+        self.ocr_service = AppleVisionOCR(self.config)
         self.database = Database(config=self.config)
         self.embedding_service = EmbeddingService(self.config)
         
@@ -194,7 +194,13 @@ class ProcessingPipeline:
         
         if self.ocr_task:
             await self.ocr_task
-        
+
+        # Close services
+        try:
+            await self.ocr_service.close()
+        except Exception as error:
+            logger.warning("ocr_service_close_failed", error=str(error))
+
         # Close database
         self.database.close()
         

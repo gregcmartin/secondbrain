@@ -1,6 +1,7 @@
 """Database interface for Second Brain."""
 
 import sqlite3
+import zlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 import structlog
@@ -34,6 +35,14 @@ class Database:
         # Enable foreign keys
         self.conn.execute("PRAGMA foreign_keys = ON")
         
+        # Enable WAL mode for better concurrency and performance
+        self.conn.execute("PRAGMA journal_mode = WAL")
+        
+        # Optimize SQLite settings
+        self.conn.execute("PRAGMA synchronous = NORMAL")  # Faster writes
+        self.conn.execute("PRAGMA cache_size = -64000")  # 64MB cache
+        self.conn.execute("PRAGMA temp_store = MEMORY")  # Use memory for temp tables
+        
         # Load and execute schema
         schema_path = Path(__file__).parent / "schema.sql"
         with open(schema_path, "r") as f:
@@ -41,7 +50,7 @@ class Database:
         self.conn.executescript(schema)
         self.conn.commit()
         
-        logger.info("database_initialized", db_path=str(self.db_path))
+        logger.info("database_initialized", db_path=str(self.db_path), wal_mode=True)
 
     def close(self) -> None:
         """Close database connection."""
@@ -56,6 +65,30 @@ class Database:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit."""
         self.close()
+
+    # Compression helpers
+    
+    def _compress_text(self, text: str) -> bytes:
+        """Compress text using zlib.
+        
+        Args:
+            text: Text to compress
+            
+        Returns:
+            Compressed bytes
+        """
+        return zlib.compress(text.encode('utf-8'), level=6)
+    
+    def _decompress_text(self, compressed: bytes) -> str:
+        """Decompress text.
+        
+        Args:
+            compressed: Compressed bytes
+            
+        Returns:
+            Decompressed text
+        """
+        return zlib.decompress(compressed).decode('utf-8')
 
     # Frame operations
     
@@ -149,7 +182,7 @@ class Database:
     # Text block operations
     
     def insert_text_blocks(self, text_blocks: List[Dict[str, Any]]) -> int:
-        """Insert multiple text blocks.
+        """Insert multiple text blocks with compression.
         
         Args:
             text_blocks: List of text block dictionaries
@@ -158,30 +191,46 @@ class Database:
             Number of blocks inserted
         """
         cursor = self.conn.cursor()
-        cursor.executemany("""
-            INSERT INTO text_blocks (
-                block_id, frame_id, text, normalized_text, confidence,
-                bbox_x, bbox_y, bbox_width, bbox_height, block_type
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, [
-            (
+        
+        # Prepare data with compression
+        data_to_insert = []
+        for block in text_blocks:
+            text = block["text"]
+            normalized = block.get("normalized_text")
+            
+            # Compress text if it's large enough to benefit (> 500 chars)
+            text_compressed = None
+            if len(text) > 500:
+                text_compressed = self._compress_text(text)
+                # Only use compression if it actually saves space
+                if len(text_compressed) >= len(text.encode('utf-8')):
+                    text_compressed = None
+            
+            data_to_insert.append((
                 block["block_id"],
                 block["frame_id"],
-                block["text"],
-                block.get("normalized_text"),
+                text,
+                normalized,
+                text_compressed,
                 block.get("confidence"),
                 block.get("bbox", {}).get("x"),
                 block.get("bbox", {}).get("y"),
                 block.get("bbox", {}).get("width"),
                 block.get("bbox", {}).get("height"),
                 block.get("block_type"),
-            )
-            for block in text_blocks
-        ])
+            ))
+        
+        cursor.executemany("""
+            INSERT INTO text_blocks (
+                block_id, frame_id, text, normalized_text, text_compressed, confidence,
+                bbox_x, bbox_y, bbox_width, bbox_height, block_type
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, data_to_insert)
         self.conn.commit()
         
         count = len(text_blocks)
-        logger.debug("text_blocks_inserted", count=count)
+        compressed_count = sum(1 for d in data_to_insert if d[4] is not None)
+        logger.debug("text_blocks_inserted", count=count, compressed=compressed_count)
         return count
 
     def get_text_blocks_by_frame(self, frame_id: str) -> List[Dict[str, Any]]:

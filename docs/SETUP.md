@@ -91,6 +91,8 @@ To modify settings, edit `~/.config/second-brain/settings.json` or use the defau
 }
 ```
 
+> Note: GPT-5 vision is the only supported OCR model; overrides are ignored.
+
 ## Data Storage
 
 All data is stored locally in:

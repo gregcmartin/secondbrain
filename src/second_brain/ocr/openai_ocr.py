@@ -8,6 +8,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import httpx
 import structlog
 from openai import AsyncOpenAI, OpenAIError, RateLimitError
 
@@ -33,14 +34,32 @@ class OpenAIOCR:
         if not api_key:
             raise ValueError(f"OpenAI API key not found in environment variable: {api_key_env}")
         
-        # Initialize OpenAI client
-        self.client = AsyncOpenAI(api_key=api_key)
-        
-        # Configuration
-        self.model = self.config.get("ocr.model", "gpt-5")
+        # Configuration (enforce GPT-5-nano exclusively)
+        configured_model = self.config.get("ocr.model", "gpt-5-nano")
+        if configured_model != "gpt-5-nano":
+            logger.warning(
+                "ocr_model_override_ignored",
+                requested_model=configured_model,
+                enforced_model="gpt-5-nano",
+            )
+            self.config.set("ocr.model", "gpt-5-nano")
+            configured_model = "gpt-5-nano"
+
+        self.model = configured_model
         self.max_retries = self.config.get("ocr.max_retries", 3)
-        self.timeout = self.config.get("ocr.timeout_seconds", 30)
+        self.timeout = self.config.get("ocr.timeout_seconds", 120)
         self.include_semantic_context = self.config.get("ocr.include_semantic_context", True)
+
+        # Initialize OpenAI client with custom HTTPX instance compatible with newer httpx versions.
+        self._http_client = httpx.AsyncClient(
+            timeout=self.timeout,
+            follow_redirects=True,
+        )
+        self.client = AsyncOpenAI(
+            api_key=api_key,
+            timeout=self.timeout,
+            http_client=self._http_client,
+        )
         
         # Rate limiting
         self.rate_limit_rpm = self.config.get("ocr.rate_limit_rpm", 50)
@@ -157,7 +176,6 @@ Be thorough and accurate. If text is unclear, note it in the semantic_context.""
                             ],
                         }
                     ],
-                    max_tokens=4096,
                     timeout=self.timeout,
                 )
                 
@@ -272,7 +290,7 @@ Be thorough and accurate. If text is unclear, note it in the semantic_context.""
         
         Args:
             image_paths: List of (image_path, frame_id) tuples
-            
+        
         Returns:
             List of text block lists (one per image)
         """
@@ -288,3 +306,11 @@ Be thorough and accurate. If text is unclear, note it in the semantic_context.""
                 )
                 processed_results.append([])
         return processed_results
+
+    async def close(self) -> None:
+        """Release underlying HTTP resources."""
+        try:
+            await self.client.close()
+        finally:
+            if not self._http_client.is_closed:
+                await self._http_client.aclose()
