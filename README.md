@@ -157,6 +157,9 @@ second-brain query "python code" --app "VSCode" --from 2025-10-20
 # Semantic search
 second-brain query "machine learning" --semantic
 
+# Semantic search with AI reranking (improved relevance)
+second-brain query "python code" --semantic --reranker
+
 # Convert yesterday's frames to video
 second-brain convert-to-video
 
@@ -260,6 +263,33 @@ Edit `~/.config/second-brain/settings.json` or use environment variables:
 5. **Summarization**: GPT-5 for automatic activity summaries
 6. **Video Converter**: ffmpeg for H.264 batch compression
 7. **UI**: Streamlit for daily review and timeline browsing
+
+---
+
+## Search Options
+
+### Semantic Search with Reranking
+
+**Optional AI-Powered Reranking** improves search result relevance by re-scoring results using BAAI's cross-encoder model.
+
+**To use reranking:**
+
+```bash
+# Enable reranking for better search results
+second-brain query "python code" --semantic --reranker
+```
+
+**To enable by default:**
+
+1. Run `second-brain ui`
+2. Expand "⚙️ Settings" 
+3. Go to **Search** tab
+4. Enable "Search result reranking"
+
+**Model Download:**
+- BAAI/bge-reranker-large (2.24 GB) downloads automatically on first use
+- Requires optional package: `pip install FlagEmbedding>=1.2.11`
+- Completely optional - system works fine without it
 
 ---
 

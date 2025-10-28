@@ -130,3 +130,13 @@ test_output/
 # Frontend artifacts
 web/timeline/node_modules/
 web/timeline/dist/
+.feature-tracking.md
+
+# Testing artifacts (git-ignored test documentation)
+docs/testing/screenshots/
+docs/testing/baseline_queries.md
+docs/testing/reranker_queries.md
+docs/testing/TEST_RESULTS.md
+docs/testing/*_test*.md
+*.test.md
+*_test_results.md

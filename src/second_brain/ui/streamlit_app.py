@@ -7,6 +7,9 @@ import sqlite3
 from typing import List, Dict, Any
 import os
 
+# Import config system
+from second_brain.config import get_config
+
 # Page config
 st.set_page_config(
     page_title="Second Brain - Daily Review",
@@ -149,6 +152,231 @@ class SecondBrainUI:
         
         return [dict(row) for row in cursor.fetchall()]
     
+    def render_settings_panel(self):
+        """Render the settings panel with full config sync.
+        
+        This panel reads from and writes to the config system bidirectionally.
+        """
+        config = get_config()
+        
+        # Initialize session state for settings
+        if 'settings_changed' not in st.session_state:
+            st.session_state['settings_changed'] = False
+        
+        st.subheader("⚙️ Settings")
+        
+        # Create tabs for different settings categories
+        tab1, tab2, tab3 = st.tabs(["Capture", "Search", "Storage"])
+        
+        with tab1:
+            st.markdown("#### Capture Settings")
+            
+            # Smart capture toggles
+            st.markdown("**Smart Capture:**")
+            
+            # Enable frame deduplication
+            enable_frame_diff = config.get("capture.enable_frame_diff", True)
+            new_frame_diff = st.checkbox(
+                "Skip duplicate frames",
+                value=enable_frame_diff,
+                help="Automatically skip frames that haven't changed"
+            )
+            if new_frame_diff != enable_frame_diff:
+                config.set("capture.enable_frame_diff", new_frame_diff)
+                config.save()
+                st.success(f"Frame deduplication {'enabled' if new_frame_diff else 'disabled'}")
+            
+            # Frame similarity threshold
+            if new_frame_diff:
+                similarity_threshold = config.get("capture.similarity_threshold", 0.95)
+                new_threshold = st.slider(
+                    "Similarity threshold",
+                    min_value=0.80,
+                    max_value=0.99,
+                    value=float(similarity_threshold),
+                    step=0.01,
+                    help="How similar frames need to be to be considered duplicates (higher = more strict)"
+                )
+                if new_threshold != similarity_threshold:
+                    config.set("capture.similarity_threshold", new_threshold)
+                    config.save()
+                    st.success(f"Threshold updated to {new_threshold}")
+            
+            st.markdown("---")
+            st.markdown("**Adaptive FPS:**")
+            
+            # Enable adaptive FPS
+            enable_adaptive_fps = config.get("capture.enable_adaptive_fps", True)
+            new_adaptive_fps = st.checkbox(
+                "Auto-adjust FPS based on activity",
+                value=enable_adaptive_fps,
+                help="Automatically reduce FPS when idle (smart power saving)"
+            )
+            if new_adaptive_fps != enable_adaptive_fps:
+                config.set("capture.enable_adaptive_fps", new_adaptive_fps)
+                config.save()
+                st.success(f"Adaptive FPS {'enabled' if new_adaptive_fps else 'disabled'}")
+            
+            # Idle threshold
+            if new_adaptive_fps:
+                idle_threshold = config.get("capture.idle_threshold_seconds", 30.0)
+                new_idle = st.slider(
+                    "Idle detection threshold (seconds)",
+                    min_value=10.0,
+                    max_value=120.0,
+                    value=float(idle_threshold),
+                    step=5.0,
+                    help="Seconds of inactivity before considered idle"
+                )
+                if new_idle != idle_threshold:
+                    config.set("capture.idle_threshold_seconds", new_idle)
+                    config.save()
+                    st.success(f"Idle threshold updated to {new_idle}s")
+            
+            st.markdown("---")
+            st.markdown("**Image Settings:**")
+            
+            # Format setting
+            current_format = config.get("capture.format", "png")
+            new_format = st.selectbox(
+                "Image format",
+                options=["png", "webp", "jpg"],
+                index=["png", "webp", "jpg"].index(current_format),
+                help="PNG: lossless, larger; WebP: balanced; JPG: smaller, lossy"
+            )
+            if new_format != current_format:
+                config.set("capture.format", new_format)
+                config.save()
+                st.success(f"Format updated to {new_format}")
+            
+            # BEGIN_DEEPSEEK_OCR
+            # OCR Engine selection (currently Apple Vision only, DeepSeek commented for future)
+            # FUTURE: Uncomment when DeepSeek OCR is production-ready
+            # current_ocr_engine = config.get("ocr.engine", "apple")
+            # new_ocr_engine = st.selectbox(
+            #     "OCR Engine",
+            #     options=["apple", "deepseek"],
+            #     index=["apple", "deepseek"].index(current_ocr_engine),
+            #     help="Apple Vision: fast, free, local (default)\nDeepSeek: cutting-edge, local, requires MLX (experimental)"
+            # )
+            # if new_ocr_engine != current_ocr_engine:
+            #     config.set("ocr.engine", new_ocr_engine)
+            #     config.save()
+            #     st.success(f"OCR engine updated to {new_ocr_engine}")
+            # END_DEEPSEEK_OCR
+            
+            # Quality setting
+            current_quality = config.get("capture.quality", 85)
+            new_quality = st.slider(
+                "Image quality (for WebP/JPG)",
+                min_value=50,
+                max_value=100,
+                value=int(current_quality),
+                step=5,
+                help="Higher quality = larger files but better image preservation"
+            )
+            if new_quality != current_quality:
+                config.set("capture.quality", new_quality)
+                config.save()
+                st.success(f"Quality updated to {new_quality}")
+            
+            # Max disk usage
+            current_max_disk = config.get("capture.max_disk_usage_gb", 100)
+            new_max_disk = st.number_input(
+                "Max disk usage (GB)",
+                min_value=10,
+                max_value=1000,
+                value=int(current_max_disk),
+                step=10,
+                help="Maximum disk space to use for captured frames"
+            )
+            if new_max_disk != current_max_disk:
+                config.set("capture.max_disk_usage_gb", new_max_disk)
+                config.save()
+                st.success(f"Max disk usage updated to {new_max_disk} GB")
+        
+        with tab2:
+            st.markdown("#### Search Settings")
+            
+            # Embeddings enabled
+            embeddings_enabled = config.get("embeddings.enabled", True)
+            new_embeddings_enabled = st.checkbox(
+                "Enable semantic search (embeddings)",
+                value=embeddings_enabled,
+                help="Enable vector embeddings for semantic search"
+            )
+            if new_embeddings_enabled != embeddings_enabled:
+                config.set("embeddings.enabled", new_embeddings_enabled)
+                config.save()
+                status = "enabled" if new_embeddings_enabled else "disabled"
+                st.success(f"Semantic search {status}")
+            
+            # Reranker setting
+            reranker_enabled = config.get("embeddings.reranker_enabled", False)
+            new_reranker_enabled = st.checkbox(
+                "Enable search result reranking",
+                value=reranker_enabled,
+                help="Use AI-powered reranking to improve search result relevance (requires BAAI/bge-reranker-large model - 2.24 GB download on first use)"
+            )
+            if new_reranker_enabled != reranker_enabled:
+                config.set("embeddings.reranker_enabled", new_reranker_enabled)
+                config.save()
+                if new_reranker_enabled:
+                    st.info("ℹ️ Reranker model (2.24 GB) will download on first search. This improves relevance significantly.")
+                    st.success("Reranking enabled")
+                else:
+                    st.success("Reranking disabled")
+            
+            # Embedding model info
+            if embeddings_enabled:
+                embedding_model = config.get("embeddings.model", "sentence-transformers/all-MiniLM-L6-v2")
+                st.caption(f"Embedding model: {embedding_model}")
+        
+        with tab3:
+            st.markdown("#### Storage Settings")
+            
+            # Retention days
+            current_retention = config.get("storage.retention_days", 90)
+            new_retention = st.number_input(
+                "Data retention (days)",
+                min_value=7,
+                max_value=365,
+                value=int(current_retention),
+                step=7,
+                help="How long to keep captured data before automatic deletion"
+            )
+            if new_retention != current_retention:
+                config.set("storage.retention_days", new_retention)
+                config.save()
+                st.success(f"Retention updated to {new_retention} days")
+            
+            # Compression
+            compression_enabled = config.get("storage.compression", True)
+            new_compression = st.checkbox(
+                "Enable compression",
+                value=compression_enabled,
+                help="Compress text blocks and metadata for faster I/O"
+            )
+            if new_compression != compression_enabled:
+                config.set("storage.compression", new_compression)
+                config.save()
+                st.success(f"Compression {'enabled' if new_compression else 'disabled'}")
+        
+        st.markdown("---")
+        
+        # Reset options
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("💾 Save All Settings", use_container_width=True):
+                config.save()
+                st.success("✅ All settings saved")
+        
+        with col2:
+            if st.button("🔄 Reset to Defaults", use_container_width=True, type="secondary"):
+                config.reset_all()
+                st.success("✅ Settings reset to defaults")
+                st.rerun()
+    
     def get_summaries_for_day(self, date: datetime) -> List[Dict[str, Any]]:
         """Get AI-generated summaries for a specific day.
         
@@ -189,12 +417,20 @@ class SecondBrainUI:
             selected_datetime = datetime.combine(selected_date, datetime.min.time())
             
             st.markdown("---")
-            st.header("⚙️ Options")
-            show_summary = st.checkbox("Show AI Summary", value=True)
-            frames_per_row = st.slider("Frames per row", 2, 6, 4)
             
+            # Render settings panel with full config management (collapsible)
+            with st.expander("⚙️ Settings", expanded=False):
+                self.render_settings_panel()
+            
+            st.markdown("---")
+            st.caption("💡 Changes are saved immediately")
+        
         # Get stats for selected day
         stats = self.get_daily_stats(selected_datetime)
+        
+        # UI-only settings (not persisted to config)
+        show_summary = st.sidebar.checkbox("Show AI Summary", value=True, help="Display AI-generated summaries if available")
+        frames_per_row = st.sidebar.slider("Frames per row", 2, 6, 4, help="How many frames to display per row in timeline")
         
         # Summary cards - show AI-generated summaries from database
         if show_summary and stats['frame_count'] > 0:
