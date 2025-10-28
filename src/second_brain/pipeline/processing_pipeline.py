@@ -11,7 +11,6 @@ from ..capture import CaptureService
 from ..config import Config
 from ..database import Database
 from ..ocr import AppleVisionOCR
-from ..embeddings import EmbeddingService
 from ..summarization import SummarizationService
 
 logger = structlog.get_logger()
@@ -32,7 +31,14 @@ class ProcessingPipeline:
         self.capture_service = CaptureService(self.config)
         self.ocr_service = AppleVisionOCR(self.config)
         self.database = Database(config=self.config)
-        self.embedding_service = EmbeddingService(self.config)
+        
+        # Initialize embedding service (optional - may have compatibility issues)
+        self.embedding_service: Optional[object] = None
+        try:
+            from ..embeddings import EmbeddingService
+            self.embedding_service = EmbeddingService(self.config)
+        except Exception as e:
+            logger.warning("embedding_service_disabled", reason=str(e))
         
         # Initialize summarization service (optional - requires API key)
         self.summarization_service: Optional[SummarizationService] = None
@@ -136,7 +142,8 @@ class ProcessingPipeline:
                             self.database.insert_text_blocks(text_blocks)
                             # Index embeddings after successful DB write
                             try:
-                                self.embedding_service.index_text_blocks(metadata, text_blocks)
+                                if self.embedding_service:
+                                    self.embedding_service.index_text_blocks(metadata, text_blocks)
                             except Exception as embed_error:
                                 # Only log as error if it's not a known compatibility issue
                                 error_str = str(embed_error)
