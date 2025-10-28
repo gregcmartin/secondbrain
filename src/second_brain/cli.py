@@ -27,11 +27,23 @@ from .database import Database
 # Load environment variables
 load_dotenv()
 
-# Configure structlog
+# Configure structlog with log level filtering
+def filter_by_level(logger, method_name, event_dict):
+    """Filter out debug logs unless DEBUG environment variable is set."""
+    if os.getenv("DEBUG", "").lower() in ("1", "true", "yes"):
+        return event_dict
+    
+    # Filter out debug level logs
+    if event_dict.get("level") == "debug":
+        raise structlog.DropEvent
+    
+    return event_dict
+
 structlog.configure(
     processors=[
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.add_log_level,
+        filter_by_level,
         structlog.processors.JSONRenderer(),
     ],
     context_class=dict,
@@ -548,6 +560,99 @@ def timeline(host: str, port: int, no_open: bool):
         asyncio.run(server.serve())
     except KeyboardInterrupt:
         console.print("\n[yellow]Shutting down timeline server...[/yellow]")
+
+
+@main.command()
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
+def reset(yes: bool):
+    """Reset Second Brain by deleting all captured data and database."""
+    import shutil
+    
+    console.print("[yellow]Second Brain Reset[/yellow]\n")
+    console.print("This will delete ALL captured data including:")
+    console.print("  • Screenshots and frames")
+    console.print("  • SQLite database")
+    console.print("  • Video files")
+    console.print("  • Embeddings")
+    console.print("  • Logs")
+    console.print(f"\n[red]WARNING: This action cannot be undone![/red]\n")
+    
+    # Prompt for confirmation unless --yes flag is used
+    if not yes:
+        confirmation = click.prompt(
+            "Type 'yes' to confirm reset",
+            type=str,
+            default="no"
+        )
+        if confirmation.lower() != "yes":
+            console.print("[yellow]Reset cancelled.[/yellow]")
+            return
+    
+    console.print("\n[yellow]Checking if service is running...[/yellow]")
+    
+    # Stop service if running
+    if is_running():
+        console.print("[yellow]Stopping Second Brain service...[/yellow]")
+        pid_file = get_pid_file()
+        try:
+            pid, _ = _read_pid_file(pid_file)
+            os.kill(pid, signal.SIGTERM)
+            
+            # Wait for process to stop
+            import time
+            for _ in range(10):
+                if not is_running():
+                    break
+                time.sleep(0.5)
+            
+            if is_running():
+                console.print("[red]Warning: Service may still be running[/red]")
+            else:
+                console.print("[green]✓[/green] Service stopped")
+        except Exception as e:
+            console.print(f"[yellow]Warning: {e}[/yellow]")
+            remove_pid()
+    else:
+        console.print("[green]✓[/green] Service not running")
+    
+    console.print()
+    
+    # Get data directory
+    config = Config()
+    data_dir = config.get_data_dir()
+    
+    if not data_dir.exists():
+        console.print("[yellow]Data directory does not exist, nothing to remove[/yellow]")
+        console.print("[green]✓ Reset complete![/green]")
+        return
+    
+    console.print(f"[yellow]Removing data directory: {data_dir}[/yellow]")
+    
+    # Remove specific subdirectories
+    dirs_to_remove = [
+        ("frames", config.get_frames_dir()),
+        ("videos", data_dir / "videos"),
+        ("database", config.get_database_dir()),
+        ("embeddings", config.get_embeddings_dir()),
+        ("logs", config.get_logs_dir()),
+    ]
+    
+    for name, dir_path in dirs_to_remove:
+        if dir_path.exists():
+            console.print(f"  • Removing {name}...")
+            try:
+                shutil.rmtree(dir_path)
+            except Exception as e:
+                console.print(f"[red]    Error removing {name}: {e}[/red]")
+    
+    # Remove PID file
+    pid_file = get_pid_file()
+    if pid_file.exists():
+        console.print("  • Removing PID file...")
+        pid_file.unlink()
+    
+    console.print(f"\n[green]✓ Reset complete![/green]")
+    console.print("\nYou can now start fresh with: [cyan]second-brain start[/cyan]")
 
 
 if __name__ == "__main__":

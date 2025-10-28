@@ -22,7 +22,7 @@ Second Brain captures your screen continuously, extracts text with local OCR, ge
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -100,7 +100,7 @@ second-brain status
 
 - **Smart Capture**: 30-50% reduction via duplicate detection
 - **Adaptive FPS**: 80% reduction during idle
-- **Text Compression**: zlib for large text blocks (50-70% savings)
+- **Text Compression**: zglib for large text blocks (50-70% savings)
 - **H.264 Video**: 96%+ compression for long-term storage
 - **Combined**: 99.3% total savings (216 GB/day → 1.4 GB/day)
 
@@ -146,6 +146,7 @@ Cost:                       $0/day (local OCR)
 | `second-brain query "term"` | Search captured text |
 | `second-brain convert-to-video` | Convert frames to H.264 video |
 | `second-brain health` | Check system health |
+| `second-brain reset` | Delete all data and start fresh |
 
 ### Examples
 
@@ -161,6 +162,12 @@ second-brain convert-to-video
 
 # Convert specific date and keep originals
 second-brain convert-to-video --date 2025-10-27 --keep-frames
+
+# Reset and start fresh (deletes all data)
+second-brain reset
+
+# Reset without confirmation prompt
+second-brain reset --yes
 ```
 
 ---
@@ -347,4 +354,3 @@ MIT License - see [LICENSE](LICENSE) for details.
 - [ ] Cloud sync (optional)
 
 ---
-
