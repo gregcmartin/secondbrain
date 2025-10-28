@@ -473,3 +473,76 @@ class Database:
         """Vacuum database to reclaim space."""
         self.conn.execute("VACUUM")
         logger.info("database_vacuumed")
+    
+    # Summary operations
+    
+    def insert_summary(self, summary_data: Dict[str, Any]) -> str:
+        """Insert a summary record.
+        
+        Args:
+            summary_data: Dictionary containing summary data
+            
+        Returns:
+            summary_id of inserted summary
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            INSERT INTO summaries (
+                summary_id, start_timestamp, end_timestamp,
+                summary_type, summary_text, frame_count, app_names
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            summary_data["summary_id"],
+            summary_data["start_timestamp"],
+            summary_data["end_timestamp"],
+            summary_data["summary_type"],
+            summary_data["summary_text"],
+            summary_data.get("frame_count"),
+            summary_data.get("app_names"),
+        ))
+        self.conn.commit()
+        
+        logger.debug("summary_inserted", summary_id=summary_data["summary_id"])
+        return summary_data["summary_id"]
+    
+    def get_summaries_for_day(self, date: datetime) -> List[Dict[str, Any]]:
+        """Get all summaries for a specific day.
+        
+        Args:
+            date: Date to get summaries for
+            
+        Returns:
+            List of summary dictionaries
+        """
+        from datetime import datetime
+        start_ts = int(date.replace(hour=0, minute=0, second=0).timestamp())
+        end_ts = int(date.replace(hour=23, minute=59, second=59).timestamp())
+        
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT * FROM summaries
+            WHERE start_timestamp >= ? AND end_timestamp <= ?
+            ORDER BY start_timestamp ASC
+        """, (start_ts, end_ts))
+        
+        return [dict(row) for row in cursor.fetchall()]
+    
+    def get_latest_summary(self, summary_type: str = "hourly") -> Optional[Dict[str, Any]]:
+        """Get the most recent summary of a given type.
+        
+        Args:
+            summary_type: Type of summary to retrieve
+            
+        Returns:
+            Summary dictionary or None
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT * FROM summaries
+            WHERE summary_type = ?
+            ORDER BY end_timestamp DESC
+            LIMIT 1
+        """, (summary_type,))
+        
+        row = cursor.fetchone()
+        return dict(row) if row else None

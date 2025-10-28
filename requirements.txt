@@ -50,3 +50,6 @@ imagehash==4.3.2
 # Video encoding (optional - for future H.264 implementation)
 pyobjc-framework-AVFoundation==12.0
 pyobjc-framework-CoreMedia==12.0
+
+# UI
+streamlit==1.40.2

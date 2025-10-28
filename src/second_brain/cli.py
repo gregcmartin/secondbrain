@@ -483,11 +483,43 @@ def health():
 
 
 @main.command()
+@click.option("--port", default=8501, show_default=True, type=int)
+def ui(port: int):
+    """Launch the Streamlit UI for daily summaries and visual timeline."""
+    import subprocess
+    import sys
+    
+    # Get path to streamlit app
+    app_path = Path(__file__).parent / "ui" / "streamlit_app.py"
+    
+    if not app_path.exists():
+        console.print(f"[red]Streamlit app not found at {app_path}[/red]")
+        return
+    
+    console.print(f"[green]Launching Second Brain UI on port {port}...[/green]")
+    console.print(f"[dim]Press Ctrl+C to stop[/dim]")
+    
+    try:
+        # Launch streamlit
+        subprocess.run([
+            sys.executable, "-m", "streamlit", "run",
+            str(app_path),
+            "--server.port", str(port),
+            "--server.headless", "false",
+        ])
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Shutting down UI...[/yellow]")
+    except Exception as e:
+        console.print(f"[red]Error launching UI: {e}[/red]")
+        console.print("[yellow]Make sure streamlit is installed: pip install streamlit[/yellow]")
+
+
+@main.command()
 @click.option("--host", default="127.0.0.1", show_default=True)
 @click.option("--port", default=8000, show_default=True, type=int)
 @click.option("--no-open", is_flag=True, help="Do not open the browser automatically")
 def timeline(host: str, port: int, no_open: bool):
-    """Launch the timeline visualization server."""
+    """Launch the timeline visualization server (React UI)."""
     try:
         from uvicorn import Config as UvicornConfig, Server as UvicornServer
     except ImportError as exc:
