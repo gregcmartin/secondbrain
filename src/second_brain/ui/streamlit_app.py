@@ -149,63 +149,26 @@ class SecondBrainUI:
         
         return [dict(row) for row in cursor.fetchall()]
     
-    def generate_daily_summary(self, date: datetime) -> str:
-        """Generate AI summary of the day using GPT-5."""
-        # Get all text for the day
+    def get_summaries_for_day(self, date: datetime) -> List[Dict[str, Any]]:
+        """Get AI-generated summaries for a specific day.
+        
+        Args:
+            date: Date to get summaries for
+            
+        Returns:
+            List of summary dictionaries
+        """
         start_ts = int(date.replace(hour=0, minute=0, second=0).timestamp())
         end_ts = int(date.replace(hour=23, minute=59, second=59).timestamp())
         
         cursor = self.conn.cursor()
         cursor.execute("""
-            SELECT f.timestamp, f.app_name, f.window_title, tb.text
-            FROM text_blocks tb
-            JOIN frames f ON tb.frame_id = f.frame_id
-            WHERE f.timestamp BETWEEN ? AND ?
-            ORDER BY f.timestamp ASC
+            SELECT * FROM summaries
+            WHERE start_timestamp >= ? AND end_timestamp <= ?
+            ORDER BY start_timestamp ASC
         """, (start_ts, end_ts))
         
-        entries = cursor.fetchall()
-        
-        if not entries:
-            return "No activity recorded for this day."
-        
-        # Prepare context for GPT-5
-        context = []
-        for entry in entries:
-            ts = datetime.fromtimestamp(entry['timestamp'])
-            context.append(f"[{ts.strftime('%H:%M')}] {entry['app_name']}: {entry['text'][:200]}")
-        
-        # Limit context to avoid token limits
-        context_text = "\n".join(context[:100])
-        
-        # Call GPT-5 for summary (if API key available)
-        api_key = os.getenv('OPENAI_API_KEY')
-        if not api_key:
-            return "⚠️ OpenAI API key not configured. Cannot generate AI summary."
-        
-        try:
-            from openai import OpenAI
-            client = OpenAI(api_key=api_key)
-            
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",  # Using available model
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a helpful assistant that summarizes a person's day based on their screen activity. Be concise, insightful, and highlight key activities, accomplishments, and patterns."
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Summarize this day's activity:\n\n{context_text}"
-                    }
-                ],
-                max_tokens=500,
-            )
-            
-            return response.choices[0].message.content
-            
-        except Exception as e:
-            return f"⚠️ Failed to generate summary: {str(e)}"
+        return [dict(row) for row in cursor.fetchall()]
     
     def run(self):
         """Run the Streamlit app."""
@@ -233,17 +196,26 @@ class SecondBrainUI:
         # Get stats for selected day
         stats = self.get_daily_stats(selected_datetime)
         
-        # Summary card
+        # Summary cards - show AI-generated summaries from database
         if show_summary and stats['frame_count'] > 0:
-            with st.spinner("Generating AI summary..."):
-                summary = self.generate_daily_summary(selected_datetime)
+            summaries = self.get_summaries_for_day(selected_datetime)
             
-            st.markdown(f"""
-            <div class="summary-card">
-                <h2>📝 Daily Summary - {selected_date.strftime('%B %d, %Y')}</h2>
-                <p style="font-size: 1.1rem; line-height: 1.6;">{summary}</p>
-            </div>
-            """, unsafe_allow_html=True)
+            if summaries:
+                for summary in summaries:
+                    start_time = datetime.fromtimestamp(summary['start_timestamp'])
+                    end_time = datetime.fromtimestamp(summary['end_timestamp'])
+                    
+                    st.markdown(f"""
+                    <div class="summary-card">
+                        <h2>🤖 AI Summary - {start_time.strftime('%H:%M')} to {end_time.strftime('%H:%M')}</h2>
+                        <p style="font-size: 1.1rem; line-height: 1.6;">{summary['summary_text']}</p>
+                        <p style="font-size: 0.9rem; opacity: 0.8; margin-top: 1rem;">
+                            📊 {summary['frame_count']} frames analyzed
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("💡 AI summaries will appear here once generated (hourly). Keep Second Brain running to generate summaries automatically.")
         
         # Stats row
         col1, col2, col3, col4 = st.columns(4)
