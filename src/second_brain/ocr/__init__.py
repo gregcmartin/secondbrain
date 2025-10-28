@@ -1,13 +1,11 @@
 """OCR module for Second Brain.
 
-Supports both local (Apple Vision) and cloud (OpenAI) OCR.
-Default is Apple Vision for speed, privacy, and zero cost.
+Uses Apple Vision framework for local, fast, free OCR.
 """
 
 from .apple_vision_ocr import AppleVisionOCR
-from .openai_ocr import OpenAIOCR
 
-# Use Apple Vision OCR by default (local, fast, free)
+# Default OCR is Apple Vision (local, fast, free)
 OCR = AppleVisionOCR
 
-__all__ = ["AppleVisionOCR", "OpenAIOCR", "OCR"]
+__all__ = ["AppleVisionOCR", "OCR"]
