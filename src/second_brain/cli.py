@@ -273,7 +273,8 @@ def status():
 @click.option("--to", "to_date", help="End date (YYYY-MM-DD)")
 @click.option("--limit", default=10, help="Maximum number of results")
 @click.option("--semantic", is_flag=True, help="Use semantic vector search")
-def query(query: str, app: Optional[str], from_date: Optional[str], to_date: Optional[str], limit: int, semantic: bool):
+@click.option("--reranker", is_flag=True, help="Use AI reranking for better relevance (requires FlagEmbedding)")
+def query(query: str, app: Optional[str], from_date: Optional[str], to_date: Optional[str], limit: int, semantic: bool, reranker: bool):
     """Search captured memory."""
     console.print(f"[cyan]Searching for:[/cyan] {query}")
     
@@ -319,6 +320,7 @@ def query(query: str, app: Optional[str], from_date: Optional[str], to_date: Opt
                     query=query,
                     limit=limit,
                     app_filter=app,
+                    rerank=reranker,  # Enable reranking if flag is set
                 )
 
                 for match in matches:
