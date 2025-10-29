@@ -9,7 +9,7 @@ import hashlib
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import structlog
 from Foundation import (
@@ -32,7 +32,6 @@ from AVFoundation import (
 )
 from CoreMedia import (
     CMTimeMake,
-    CMTimeMakeWithSeconds,
     kCMPixelFormat_32ARGB,
 )
 from CoreVideo import (
@@ -44,8 +43,6 @@ from CoreVideo import (
     kCVPixelBufferCGBitmapContextCompatibilityKey,
 )
 from Quartz import (
-    CGImageGetWidth,
-    CGImageGetHeight,
     CGImageGetDataProvider,
     CGDataProviderCopyData,
     CGImageSourceCreateWithURL,
@@ -140,9 +137,9 @@ class H264VideoEncoder:
         return segment
     
     def _create_video_writer(
-        self, 
-        output_path: Path, 
-        width: int, 
+        self,
+        output_path: Path,
+        width: int,
         height: int
     ) -> Tuple[AVAssetWriter, AVAssetWriterInput, AVAssetWriterInputPixelBufferAdaptor]:
         """Create AVAssetWriter for H.264 encoding.
@@ -254,13 +251,11 @@ class H264VideoEncoder:
             # Lock pixel buffer
             CVPixelBufferLockBaseAddress(pixel_buffer, 0)
             
-            # Get pixel data
-            base_address = CVPixelBufferGetBaseAddress(pixel_buffer)
-            
             # Copy image data to pixel buffer
             # This is a simplified version - in production you'd use CGBitmapContext
+            _ = CVPixelBufferGetBaseAddress(pixel_buffer)
             data_provider = CGImageGetDataProvider(cg_image)
-            data = CGDataProviderCopyData(data_provider)
+            _ = CGDataProviderCopyData(data_provider)
             
             # Unlock pixel buffer
             CVPixelBufferUnlockBaseAddress(pixel_buffer, 0)
@@ -272,8 +267,8 @@ class H264VideoEncoder:
             return None
     
     async def add_frame(
-        self, 
-        image_path: Path, 
+        self,
+        image_path: Path,
         timestamp: datetime,
         width: int,
         height: int
@@ -291,9 +286,11 @@ class H264VideoEncoder:
         """
         try:
             # Check if we need to start a new segment
-            if (self.current_segment is None or 
-                self.segment_start_time is None or
-                (time.time() - self.segment_start_time) >= self.segment_duration):
+            if (
+                self.current_segment is None
+                or self.segment_start_time is None
+                or (time.time() - self.segment_start_time) >= self.segment_duration
+            ):
                 
                 # Finalize current segment if exists
                 if self.current_segment:

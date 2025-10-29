@@ -25,6 +25,8 @@ MANIFEST
 
 # Virtual Environment
 venv/
+.venv/
+.venv311/
 env/
 ENV/
 env.bak/
@@ -37,6 +39,17 @@ venv.bak/
 *.swo
 *~
 .DS_Store
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.backup
+*.cache
+*.old
+~*
 
 # Testing
 .pytest_cache/
@@ -52,6 +65,29 @@ frames/
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Capture files (images and media)
+*.img
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.svg
+*.bmp
+*.tiff
+*.tif
+*.ico
+*.heic
+*.heif
+*.pdf
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+captures/
+screenshots/
 
 # Logs
 *.log
@@ -95,3 +131,14 @@ test_output/
 # Frontend artifacts
 web/timeline/node_modules/
 web/timeline/dist/
+.feature-tracking.md
+
+# Testing artifacts (git-ignored test documentation)
+docs/testing/screenshots/
+docs/testing/baseline_queries.md
+docs/testing/reranker_queries.md
+docs/testing/TEST_RESULTS.md
+docs/testing/*_test*.md
+*.test.md
+*_test_results.md
+!assets/*.png

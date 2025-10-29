@@ -1,7 +1,6 @@
 """Command-line interface for Second Brain."""
 
 import asyncio
-import json
 import os
 import signal
 import sys
@@ -28,6 +27,8 @@ from .database import Database
 load_dotenv()
 
 # Configure structlog with log level filtering
+
+
 def filter_by_level(logger, method_name, event_dict):
     """Filter logs based on DEBUG environment variable.
     
@@ -43,6 +44,7 @@ def filter_by_level(logger, method_name, event_dict):
         raise structlog.DropEvent
     
     return event_dict
+
 
 structlog.configure(
     processors=[
@@ -168,7 +170,7 @@ def start(fps: Optional[float]):
             
             console.print(f"[green]✓[/green] Service started (PID: {os.getpid()})")
             console.print(f"[green]✓[/green] Capturing at {config.get('capture.fps')} FPS")
-            console.print(f"[green]✓[/green] Press Ctrl+C to stop")
+            console.print("[green]✓[/green] Press Ctrl+C to stop")
             
             # Keep running
             while pipeline.running:
@@ -273,7 +275,8 @@ def status():
 @click.option("--to", "to_date", help="End date (YYYY-MM-DD)")
 @click.option("--limit", default=10, help="Maximum number of results")
 @click.option("--semantic", is_flag=True, help="Use semantic vector search")
-def query(query: str, app: Optional[str], from_date: Optional[str], to_date: Optional[str], limit: int, semantic: bool):
+@click.option("--reranker", is_flag=True, help="Use AI reranking for better relevance (requires FlagEmbedding)")
+def query(query: str, app: Optional[str], from_date: Optional[str], to_date: Optional[str], limit: int, semantic: bool, reranker: bool):
     """Search captured memory."""
     console.print(f"[cyan]Searching for:[/cyan] {query}")
     
@@ -286,7 +289,7 @@ def query(query: str, app: Optional[str], from_date: Optional[str], to_date: Opt
             dt = datetime.strptime(from_date, "%Y-%m-%d")
             start_timestamp = int(dt.timestamp())
         except ValueError:
-            console.print(f"[red]Invalid from date format. Use YYYY-MM-DD[/red]")
+            console.print("[red]Invalid from date format. Use YYYY-MM-DD[/red]")
             return
     
     if to_date:
@@ -294,7 +297,7 @@ def query(query: str, app: Optional[str], from_date: Optional[str], to_date: Opt
             dt = datetime.strptime(to_date, "%Y-%m-%d")
             end_timestamp = int(dt.timestamp())
         except ValueError:
-            console.print(f"[red]Invalid to date format. Use YYYY-MM-DD[/red]")
+            console.print("[red]Invalid to date format. Use YYYY-MM-DD[/red]")
             return
     
     # Search database
@@ -319,6 +322,7 @@ def query(query: str, app: Optional[str], from_date: Optional[str], to_date: Opt
                     query=query,
                     limit=limit,
                     app_filter=app,
+                    rerank=reranker,  # Enable reranking if flag is set
                 )
 
                 for match in matches:
@@ -361,6 +365,114 @@ def query(query: str, app: Optional[str], from_date: Optional[str], to_date: Opt
         if not display_results:
             console.print("[yellow]No results found[/yellow]")
             return
+        
+        # Generate AI answer from search results if semantic search
+        if semantic and display_results:
+            try:
+                import os
+                from openai import OpenAI
+                
+                client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+                
+                # Prepare enhanced context from search results
+                context_items = []
+                apps_seen = set()
+                
+                # Sanitize function to avoid problematic control chars for LLMs
+                def _sanitize_text(s: str) -> str:
+                    return "".join(
+                        ch if (
+                            ch == "\n" or 32 <= ord(ch) <= 126 or (ord(ch) >= 160 and ord(ch) not in (0xFFFF, 0xFFFE))
+                        ) else " "
+                        for ch in s
+                    )
+                
+                for i, result in enumerate(display_results[:40]):  # limit context size for reliability
+                    ts = datetime.fromtimestamp(result["timestamp"])
+                    app = result.get("app_name", "Unknown")
+                    window = result.get("window_title", "")
+                    text = result.get("text", "").strip()
+                    
+                    if not text:
+                        continue
+                    
+                    apps_seen.add(app)
+                    relevance = "HIGH" if i < 5 else "MEDIUM" if i < 15 else "LOW"
+                    text = _sanitize_text(" ".join(text.split()))[:300]  # Clean and limit
+                    
+                    context_items.append(f"""[RELEVANCE: {relevance}]
+Time: {ts.strftime('%Y-%m-%d %H:%M:%S')}
+Application: {app}
+Window: {window}
+Content:
+{text}""")
+                
+                context_text = ("\n\n" + "=" * 50 + "\n\n").join(context_items)
+                apps_summary = f"Applications involved: {', '.join(sorted([a for a in apps_seen if isinstance(a, str) and a]))}"
+                
+                # Generate answer using Responses API (preferred)
+                response = client.responses.create(
+                    model="gpt-5",
+                    instructions=(
+                        "You are an expert assistant analyzing computer activity through OCR text. "
+                        "You see the ACTUAL content from the user's screen - code, commands, documents, web pages, etc. "
+                        "Provide specific, actionable answers based on this evidence."
+                    ),
+                    input=(
+                        f"Based on my screen activity, please answer: {query}\n\n"
+                        f"{apps_summary}\n\n"
+                        f"OCR Text from my screen (organized by relevance):\n{context_text}\n\n"
+                        "Provide a specific, detailed answer. Reference the actual text you see. "
+                        "If you notice patterns or workflows, describe them. Include file names, commands, or code changes when relevant."
+                    ),
+                    max_output_tokens=2000,
+                )
+                
+                answer = getattr(response, "output_text", None)
+                finish_reason = getattr(response, "status", None)
+                
+                # Display AI answer prominently
+                console.print("\n[bold cyan]🤖 AI Answer:[/bold cyan]")
+                answer_panel = Panel(
+                    answer or "",
+                    style="cyan",
+                    border_style="cyan",
+                    padding=(1, 2),
+                )
+                console.print(answer_panel)
+                if not answer or len(answer.strip()) == 0:
+                    console.print(f"[yellow]Empty answer (finish_reason={finish_reason}). Retrying with condensed context...[/yellow]")
+                    condensed_items = []
+                    for j, result in enumerate(display_results[:10]):
+                        ts2 = datetime.fromtimestamp(result["timestamp"])
+                        app2 = result.get("app_name", "Unknown")
+                        window2 = result.get("window_title", "")
+                        text2 = result.get("text", "").strip()
+                        if not text2:
+                            continue
+                        text2 = _sanitize_text(" ".join(text2.split()))[:200]
+                        condensed_items.append(f"[{ts2.strftime('%Y-%m-%d %H:%M:%S')}] {app2} • {window2}\n{text2}")
+                    condensed_context = "\n\n".join(condensed_items)
+                    try:
+                        response2 = client.responses.create(
+                            model="gpt-5",
+                            instructions=(
+                                "Answer succinctly using the following short OCR snippets from the user's screen."
+                            ),
+                            input=f"Question: {query}\n\nEvidence:\n{condensed_context}",
+                            max_output_tokens=600,
+                        )
+                        answer2 = getattr(response2, "output_text", None)
+                        finish_reason2 = getattr(response2, "status", None)
+                        console.print(Panel(answer2 or "", style="cyan", border_style="cyan", padding=(1, 2)))
+                        if not answer2 or len(answer2.strip()) == 0:
+                            console.print(f"[yellow]Still empty after retry (finish_reason={finish_reason2}).[/yellow]")
+                    except Exception as retry_err:
+                        console.print(f"[yellow]Retry failed: {retry_err}[/yellow]")
+                console.print("")  # Space before results
+                
+            except Exception as e:
+                console.print(f"[yellow]Could not generate AI answer: {e}[/yellow]\n")
         
         console.print(f"\n[green]Found {len(display_results)} results:[/green]\n")
         
@@ -407,7 +519,7 @@ def convert_to_video(date: Optional[str], keep_frames: bool):
         try:
             target_date = datetime.strptime(date, "%Y-%m-%d")
         except ValueError:
-            console.print(f"[red]Invalid date format. Use YYYY-MM-DD[/red]")
+            console.print("[red]Invalid date format. Use YYYY-MM-DD[/red]")
             return
     else:
         target_date = datetime.now() - timedelta(days=1)
@@ -434,9 +546,9 @@ def convert_to_video(date: Optional[str], keep_frames: bool):
         if result:
             console.print(f"[green]✓ Video created: {result}[/green]")
             if not keep_frames:
-                console.print(f"[yellow]Original frames deleted to save space[/yellow]")
+                console.print("[yellow]Original frames deleted to save space[/yellow]")
         else:
-            console.print(f"[red]✗ Conversion failed[/red]")
+            console.print("[red]✗ Conversion failed[/red]")
     
     try:
         asyncio.run(do_conversion())
@@ -514,7 +626,7 @@ def ui(port: int):
         return
     
     console.print(f"[green]Launching Second Brain UI on port {port}...[/green]")
-    console.print(f"[dim]Press Ctrl+C to stop[/dim]")
+    console.print("[dim]Press Ctrl+C to stop[/dim]")
     
     try:
         # Launch streamlit
@@ -580,7 +692,7 @@ def reset(yes: bool):
     console.print("  • Video files")
     console.print("  • Embeddings")
     console.print("  • Logs")
-    console.print(f"\n[red]WARNING: This action cannot be undone![/red]\n")
+    console.print("\n[red]WARNING: This action cannot be undone![/red]\n")
     
     # Prompt for confirmation unless --yes flag is used
     if not yes:
@@ -656,7 +768,7 @@ def reset(yes: bool):
         console.print("  • Removing PID file...")
         pid_file.unlink()
     
-    console.print(f"\n[green]✓ Reset complete![/green]")
+    console.print("\n[green]✓ Reset complete![/green]")
     console.print("\nYou can now start fresh with: [cyan]second-brain start[/cyan]")
 
 

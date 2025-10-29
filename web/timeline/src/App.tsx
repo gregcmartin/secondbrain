@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
 import dayjs from "dayjs";
+import { SettingsPanel } from "./components/SettingsPanel";
 
 type Frame = {
   frame_id: string;
@@ -25,6 +26,8 @@ type AppStat = {
   app_name: string;
   frame_count: number;
 };
+
+type OCREngine = "apple" | "deepseek";
 
 const fetchFrames = async (params: {
   app_bundle_id?: string | null;
@@ -52,17 +55,96 @@ const fetchApps = async () => {
   return response.data.apps as AppStat[];
 };
 
+const fetchOCREngine = async (): Promise<OCREngine> => {
+  const response = await axios.get("/api/settings/ocr-engine");
+  return response.data.engine as OCREngine;
+};
+
+const setOCREngine = async (engine: OCREngine): Promise<void> => {
+  await axios.post("/api/settings/ocr-engine", null, {
+    params: { engine }
+  });
+};
+
 const formatTime = (timestamp: number) =>
   dayjs.unix(timestamp).format("HH:mm:ss");
 
 const formatDate = (timestamp: number) =>
   dayjs.unix(timestamp).format("YYYY-MM-DD");
 
+function OCREngineToggle() {
+  const [engine, setEngine] = useState<OCREngine>("apple");
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    // Get current engine on mount
+    fetchOCREngine().then(setEngine).catch(console.error);
+  }, []);
+
+  const handleToggle = async (newEngine: OCREngine) => {
+    if (newEngine === engine) return;
+
+    setIsLoading(true);
+    try {
+      await setOCREngine(newEngine);
+      setEngine(newEngine);
+    } catch (error) {
+      console.error("Failed to switch OCR engine:", error);
+      alert("Failed to switch OCR engine. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <section className="ocr-engine-toggle filter-card">
+      <h2>OCR Engine</h2>
+      <div className="toggle-buttons">
+        <button
+          className={engine === "apple" ? "active" : ""}
+          onClick={() => handleToggle("apple")}
+          disabled={isLoading}
+        >
+          Apple Vision
+        </button>
+        <button
+          className={engine === "deepseek" ? "active" : ""}
+          onClick={() => handleToggle("deepseek")}
+          disabled={isLoading}
+        >
+          DeepSeek OCR
+        </button>
+      </div>
+      <div className="engine-status">
+        <p>
+          <strong>Currently using:</strong> {engine}
+        </p>
+        {engine === "apple" && (
+          <p className="engine-info">✓ Local, fast, free (on-device)</p>
+        )}
+        {engine === "deepseek" && (
+          <p className="engine-info">✓ Free, runs locally</p>
+        )}
+        <p className="engine-note">
+          <small>Note: Restart capture service for changes to take effect</small>
+        </p>
+      </div>
+    </section>
+  );
+}
+
 export default function App() {
   const [appFilter, setAppFilter] = useState<string | null>(null);
   const [startDate, setStartDate] = useState<string | null>(null);
   const [endDate, setEndDate] = useState<string | null>(null);
   const [selectedFrameId, setSelectedFrameId] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [question, setQuestion] = useState("");
+  const [useSemantic, setUseSemantic] = useState(true);
+  const [useReranker, setUseReranker] = useState(false);
+  const [maxResults, setMaxResults] = useState(20);
+  const [answer, setAnswer] = useState<string | null>(null);
+  const [asking, setAsking] = useState(false);
 
   const framesQuery = useQuery({
     queryKey: ["frames", appFilter, startDate, endDate],
@@ -117,7 +199,16 @@ export default function App() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <h1>Second Brain Timeline</h1>
+        <div className="sidebar-header">
+          <h1>Second Brain Timeline</h1>
+          <button
+            className="settings-button"
+            onClick={() => setSettingsOpen(true)}
+            title="Settings"
+          >
+            ⚙️
+          </button>
+        </div>
         <section className="filter-card">
           <h2>Filters</h2>
           <label className="filter-field">
@@ -157,6 +248,7 @@ export default function App() {
             />
           </label>
         </section>
+        <OCREngineToggle />
         <section className="details-card">
           <h2>Details</h2>
           {selectedFrame ? (
@@ -193,6 +285,59 @@ export default function App() {
       </aside>
 
       <main className="timeline-main">
+        <section className="chat-card">
+          <h2 style={{marginTop: 0}}>Ask Your Second Brain</h2>
+          <div className="chat-row" style={{marginTop: 8}}>
+            <textarea
+              placeholder="What was I working on? Which repo did I open?"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+            />
+            <div className="chat-controls">
+              <label style={{display: 'flex', gap: 6, alignItems: 'center'}}>
+                <input type="checkbox" checked={useSemantic} onChange={(e) => setUseSemantic(e.target.checked)} />
+                Semantic
+              </label>
+              <label style={{display: 'flex', gap: 6, alignItems: 'center'}}>
+                <input type="checkbox" checked={useReranker} onChange={(e) => setUseReranker(e.target.checked)} disabled={!useSemantic} />
+                Reranker
+              </label>
+              <label style={{display: 'flex', gap: 6, alignItems: 'center'}}>
+                Max
+                <input type="number" min={5} max={50} value={maxResults} onChange={(e) => setMaxResults(parseInt(e.target.value || '20'))} style={{width: 70}} />
+              </label>
+              <button
+                className="ask-button"
+                disabled={!question.trim() || asking}
+                onClick={async () => {
+                  setAsking(true);
+                  setAnswer(null);
+                  try {
+                    const res = await axios.post('/api/ask', {
+                      query: question,
+                      limit: maxResults,
+                      app_bundle_id: appFilter,
+                      semantic: useSemantic,
+                      reranker: useReranker,
+                    });
+                    setAnswer(res.data?.answer ?? null);
+                  } catch (err: any) {
+                    setAnswer(`Error: ${err?.response?.data?.detail || err.message}`);
+                  } finally {
+                    setAsking(false);
+                  }
+                }}
+              >{asking ? 'Thinking…' : 'Ask'}</button>
+            </div>
+          </div>
+          {answer && (
+            <div className="ai-answer" style={{marginTop: 12}}>
+              <h3 style={{marginTop: 0}}>🤖 AI Answer</h3>
+              <div style={{whiteSpace: 'pre-wrap'}}>{answer}</div>
+            </div>
+          )}
+        </section>
+
         {framesQuery.isLoading ? (
           <div className="empty-state">Loading frames…</div>
         ) : groupedByDate.length === 0 ? (
@@ -234,6 +379,11 @@ export default function App() {
           ))
         )}
       </main>
+
+      <SettingsPanel
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
     </div>
   );
 }

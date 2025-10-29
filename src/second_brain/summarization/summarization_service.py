@@ -7,13 +7,12 @@ summaries in the database for quick retrieval.
 import asyncio
 import json
 import os
-import time
 import uuid
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 import structlog
 
-from openai import AsyncOpenAI, OpenAIError
+from openai import AsyncOpenAI
 
 from ..config import Config
 from ..database import Database
@@ -39,7 +38,8 @@ class SummarizationService:
         
         # Initialize OpenAI client
         self.client = AsyncOpenAI(api_key=api_key)
-        self.model = "gpt-5"  # Using available model
+        # Use configured model if provided; default to GPT-5
+        self.model = self.config.get("summarization.model", "gpt-5")
         
         # Configuration
         self.hourly_summary_enabled = self.config.get("summarization.hourly_enabled", True)
@@ -89,7 +89,7 @@ class SummarizationService:
         
         # Create prompt based on summary type
         if summary_type == "hourly":
-            prompt = f"""Summarize this hour of screen activity. Be concise but insightful. 
+            prompt = f"""Summarize this hour of screen activity. Be concise but insightful.
 Focus on:
 - Main tasks/activities
 - Applications used
@@ -120,23 +120,17 @@ Activity log:
 Provide a brief 2-3 sentence summary."""
         
         try:
-            response = await self.client.chat.completions.create(
+            response = await self.client.responses.create(
                 model=self.model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a helpful assistant that summarizes screen activity. Be concise, insightful, and focus on meaningful patterns and accomplishments."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                max_completion_tokens=300,
-                # GPT-5 only supports temperature=1 (default), so we omit it
+                instructions=(
+                    "You are a helpful assistant that summarizes screen activity. "
+                    "Be concise, insightful, and focus on meaningful patterns and accomplishments."
+                ),
+                input=prompt,
+                max_output_tokens=2000,
             )
             
-            summary = response.choices[0].message.content
+            summary = getattr(response, "output_text", "")
             logger.info(
                 "summary_generated",
                 type=summary_type,
@@ -146,7 +140,7 @@ Provide a brief 2-3 sentence summary."""
             
             return summary
             
-        except OpenAIError as e:
+        except Exception as e:
             logger.error("summary_generation_failed", error=str(e))
             return f"Failed to generate summary: {str(e)}"
     

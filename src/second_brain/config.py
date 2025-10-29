@@ -1,7 +1,6 @@
 """Configuration management for Second Brain."""
 
 import json
-import os
 from pathlib import Path
 from typing import Any, Dict
 
@@ -13,9 +12,14 @@ DEFAULT_CONFIG = {
         "quality": 85,
         "max_disk_usage_gb": 100,
         "min_free_space_gb": 10,
+        # Smart capture features
+        "enable_frame_diff": True,
+        "similarity_threshold": 0.95,
+        "enable_adaptive_fps": True,
+        "idle_threshold_seconds": 30.0,
     },
     "ocr": {
-        "engine": "openai",
+        "engine": "apple",
         "model": "gpt-5",
         "api_key_env": "OPENAI_API_KEY",
         "batch_size": 5,
@@ -32,6 +36,9 @@ DEFAULT_CONFIG = {
         "model": "sentence-transformers/all-MiniLM-L6-v2",
         "dimension": 384,
         "enabled": True,
+        # Optional reranker for improved search relevance
+        "reranker_enabled": False,
+        "reranker_model": "BAAI/bge-reranker-large",
     },
 }
 
@@ -141,6 +148,11 @@ class Config:
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.config_path, "w") as f:
             json.dump(self.config, f, indent=2)
+
+    def reset_all(self) -> None:
+        """Reset configuration to defaults."""
+        self.config = DEFAULT_CONFIG.copy()
+        self.save()
 
     def ensure_directories(self) -> None:
         """Ensure all required directories exist."""
