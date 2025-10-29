@@ -18,43 +18,169 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
+# Custom CSS with modern animations and improved styling
 st.markdown("""
 <style>
+    /* Global improvements */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.02); }
+    }
+
+    @keyframes shimmer {
+        0% { background-position: -1000px 0; }
+        100% { background-position: 1000px 0; }
+    }
+
+    /* Main header with gradient text */
     .main-header {
         font-size: 3rem;
-        font-weight: bold;
-        margin-bottom: 1rem;
+        font-weight: 800;
+        margin-bottom: 0.5rem;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        animation: fadeIn 0.6s ease-out;
     }
+
+    /* Enhanced summary card with glassmorphism effect */
     .summary-card {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 2rem;
-        border-radius: 1rem;
+        padding: 2.5rem;
+        border-radius: 1.5rem;
         color: white;
         margin-bottom: 2rem;
+        box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+        animation: fadeIn 0.8s ease-out;
+        transition: all 0.3s ease;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
     }
+
+    .summary-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 12px 48px rgba(102, 126, 234, 0.4);
+    }
+
+    /* Modern stat boxes with hover effects - dark mode compatible */
     .stat-box {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 0.5rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        background: rgba(255, 255, 255, 0.05);
+        padding: 2rem;
+        border-radius: 1rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         text-align: center;
+        transition: all 0.3s ease;
+        animation: fadeIn 0.6s ease-out;
+        border: 2px solid rgba(102, 126, 234, 0.3);
     }
+
+    .stat-box:hover {
+        transform: translateY(-5px) scale(1.02);
+        box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
+        border-color: #667eea;
+        background: rgba(102, 126, 234, 0.1);
+    }
+
+    /* Timeline frame cards with smooth transitions - dark mode compatible */
     .timeline-frame {
-        border: 2px solid #e0e0e0;
-        border-radius: 0.5rem;
-        padding: 0.5rem;
+        border: 2px solid rgba(255, 255, 255, 0.1);
+        border-radius: 0.75rem;
+        padding: 0.75rem;
         margin: 0.5rem;
         cursor: pointer;
-        transition: all 0.3s;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        background: rgba(255, 255, 255, 0.03);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
     }
+
     .timeline-frame:hover {
         border-color: #667eea;
-        transform: scale(1.05);
+        transform: translateY(-3px) scale(1.02);
+        box-shadow: 0 8px 16px rgba(102, 126, 234, 0.4);
+        background: rgba(102, 126, 234, 0.1);
     }
+
     .timeline-frame.selected {
         border-color: #667eea;
-        box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+        box-shadow: 0 6px 12px rgba(102, 126, 234, 0.5);
+        background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%);
+    }
+
+    /* Enhanced button styling */
+    .stButton > button {
+        border-radius: 0.5rem;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        border: none;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    }
+
+    /* Image hover effects */
+    img {
+        transition: all 0.3s ease;
+        border-radius: 0.5rem;
+    }
+
+    img:hover {
+        transform: scale(1.03);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.15);
+    }
+
+    /* Progress bar styling */
+    .stProgress > div > div {
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        border-radius: 1rem;
+    }
+
+    /* Expander styling */
+    .streamlit-expanderHeader {
+        border-radius: 0.5rem;
+        transition: all 0.3s ease;
+        font-weight: 600;
+    }
+
+    .streamlit-expanderHeader:hover {
+        background-color: rgba(102, 126, 234, 0.05);
+    }
+
+    /* Loading spinner animation */
+    .stSpinner > div {
+        border-color: #667eea !important;
+    }
+
+    /* Smooth fade for all containers */
+    .element-container {
+        animation: fadeIn 0.5s ease-out;
+    }
+
+    /* Info/success/warning boxes */
+    .stAlert {
+        border-radius: 0.75rem;
+        border-left: 4px solid #667eea;
+        animation: fadeIn 0.5s ease-out;
+    }
+
+    /* Sidebar improvements - dark mode */
+    .css-1d391kg {
+        background: linear-gradient(180deg, #0e1117 0%, #262730 100%);
+    }
+
+    /* Metric styling */
+    [data-testid="stMetricValue"] {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #667eea;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -78,12 +204,13 @@ class SecondBrainUI:
         self.conn = sqlite3.connect(str(self.db_path))
         self.conn.row_factory = sqlite3.Row
     
-    def get_daily_stats(self, date: datetime) -> Dict[str, Any]:
+    @st.cache_data(ttl=60)
+    def get_daily_stats(_self, date: datetime) -> Dict[str, Any]:
         """Get statistics for a specific day."""
         start_ts = int(date.replace(hour=0, minute=0, second=0).timestamp())
         end_ts = int(date.replace(hour=23, minute=59, second=59).timestamp())
-        
-        cursor = self.conn.cursor()
+
+        cursor = _self.conn.cursor()
         
         # Get frame count
         cursor.execute("""
@@ -127,7 +254,8 @@ class SecondBrainUI:
             'total_chars': total_chars,
         }
     
-    def get_frames_for_day(self, date: datetime, app_filter: str = None, start_time=None, end_time=None, preview_per_hour: int = 10) -> Dict[int, List[Dict[str, Any]]]:
+    @st.cache_data(ttl=60)
+    def get_frames_for_day(_self, date: datetime, app_filter: str = None, start_time=None, end_time=None, preview_per_hour: int = 10) -> Dict[int, List[Dict[str, Any]]]:
         """Get frames for a specific day with filtering and lazy loading.
 
         Args:
@@ -162,7 +290,7 @@ class SecondBrainUI:
         start_ts = int(start_dt.timestamp())
         end_ts = int(end_dt.timestamp())
 
-        cursor = self.conn.cursor()
+        cursor = _self.conn.cursor()
 
         # Build query with optional app filter
         query = """
@@ -193,12 +321,13 @@ class SecondBrainUI:
 
         return frames_by_hour
 
-    def get_apps_for_day(self, date: datetime) -> List[str]:
+    @st.cache_data(ttl=60)
+    def get_apps_for_day(_self, date: datetime) -> List[str]:
         """Get list of apps used on a specific day."""
         start_ts = int(date.replace(hour=0, minute=0, second=0).timestamp())
         end_ts = int(date.replace(hour=23, minute=59, second=59).timestamp())
 
-        cursor = self.conn.cursor()
+        cursor = _self.conn.cursor()
         cursor.execute("""
             SELECT DISTINCT app_name FROM frames
             WHERE timestamp BETWEEN ? AND ?
@@ -207,9 +336,10 @@ class SecondBrainUI:
 
         return [row[0] for row in cursor.fetchall()]
     
-    def get_text_for_frame(self, frame_id: str) -> List[Dict[str, Any]]:
+    @st.cache_data(ttl=60)
+    def get_text_for_frame(_self, frame_id: str) -> List[Dict[str, Any]]:
         """Get text blocks for a frame."""
-        cursor = self.conn.cursor()
+        cursor = _self.conn.cursor()
         cursor.execute("""
             SELECT * FROM text_blocks
             WHERE frame_id = ?
@@ -442,19 +572,20 @@ class SecondBrainUI:
                 st.success("✅ Settings reset to defaults")
                 st.rerun()
     
-    def get_summaries_for_day(self, date: datetime) -> List[Dict[str, Any]]:
+    @st.cache_data(ttl=60)
+    def get_summaries_for_day(_self, date: datetime) -> List[Dict[str, Any]]:
         """Get AI-generated summaries for a specific day.
-        
+
         Args:
             date: Date to get summaries for
-            
+
         Returns:
             List of summary dictionaries
         """
         start_ts = int(date.replace(hour=0, minute=0, second=0).timestamp())
         end_ts = int(date.replace(hour=23, minute=59, second=59).timestamp())
-        
-        cursor = self.conn.cursor()
+
+        cursor = _self.conn.cursor()
         cursor.execute("""
             SELECT * FROM summaries
             WHERE start_timestamp >= ? AND end_timestamp <= ?
@@ -490,9 +621,29 @@ class SecondBrainUI:
             st.markdown("---")
             st.caption("💡 Changes are saved immediately")
         
-        # Get stats for selected day
-        stats = self.get_daily_stats(selected_datetime)
-        
+        # Get stats for selected day with loading indicator
+        with st.spinner("Loading daily statistics..."):
+            stats = self.get_daily_stats(selected_datetime)
+
+        # Show empty state if no frames captured
+        if stats['frame_count'] == 0:
+            st.markdown("""
+            <div style="padding: 4rem 2rem; text-align: center; background: linear-gradient(135deg, rgba(102, 126, 234, 0.2) 0%, rgba(118, 75, 162, 0.2) 100%); border-radius: 1.5rem; margin: 3rem 0;">
+                <h1 style="color: #667eea; margin-bottom: 1rem;">📭 No Activity Recorded</h1>
+                <p style="font-size: 1.2rem; color: #aaa; margin-bottom: 2rem;">
+                    No frames were captured on this day.
+                </p>
+                <div style="background: rgba(255, 255, 255, 0.05); padding: 2rem; border-radius: 1rem; max-width: 600px; margin: 0 auto; box-shadow: 0 8px 16px rgba(0,0,0,0.5); border: 1px solid rgba(102, 126, 234, 0.3);">
+                    <h3 style="color: #fafafa; margin-bottom: 1rem;">🚀 Getting Started</h3>
+                    <p style="color: #ccc; line-height: 1.8; margin: 0;">
+                        Make sure Second Brain is running in the background to start capturing your screen activity.
+                        Try selecting a different date or start Second Brain to begin recording!
+                    </p>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            st.stop()
+
         # UI-only settings (not persisted to config)
         show_summary = st.sidebar.checkbox("Show AI Summary", value=True, help="Display AI-generated summaries if available")
         frames_per_row = st.sidebar.slider("Frames per row", 2, 6, 4, help="How many frames to display per row in timeline")
@@ -527,10 +678,241 @@ class SecondBrainUI:
             step=5,
             help="Number of frames to display per hour. Set to 1000 to see all frames."
         )
-        
+
+        # ===== CHATBOT / QUERY INTERFACE =====
+        st.markdown("---")
+        st.markdown("### 💬 Ask Your Second Brain")
+
+        query_text = st.text_input(
+            "Search your captured memory",
+            placeholder="What was I working on yesterday? What did I read about...?",
+            help="Ask questions about your captured screen activity"
+        )
+
+        # Query options in expander
+        with st.expander("🔧 Search Options", expanded=False):
+            col1, col2 = st.columns(2)
+            with col1:
+                use_semantic = st.checkbox(
+                    "Use Semantic Search",
+                    value=True,
+                    help="Vector-based semantic search for meaning, not just keywords"
+                )
+                result_limit = st.slider(
+                    "Max Results",
+                    min_value=5,
+                    max_value=50,
+                    value=10,
+                    help="Maximum number of results to return"
+                )
+            with col2:
+                use_reranker = st.checkbox(
+                    "Enable AI Reranking",
+                    value=False,
+                    disabled=not use_semantic,
+                    help="Use AI-powered reranking for better relevance (requires model download)"
+                )
+                query_app_filter = st.selectbox(
+                    "Filter by App",
+                    options=["All"] + available_apps,
+                    key="query_app_filter",
+                    help="Only search within specific app"
+                )
+
+        # Execute search
+        if query_text:
+            with st.spinner("🔍 Searching your memory..."):
+                try:
+                    from second_brain.database import Database
+
+                    db = Database()
+                    search_results = []
+                    debug_info = []
+
+                    if use_semantic:
+                        # Use semantic vector search
+                        try:
+                            from second_brain.embeddings import EmbeddingService
+                            embedding_service = EmbeddingService()
+
+                            debug_info.append(f"Using semantic search with limit={result_limit}")
+                            debug_info.append(f"App filter: {query_app_filter}")
+                            debug_info.append(f"Reranker: {use_reranker}")
+
+                            matches = embedding_service.search(
+                                query=query_text,
+                                limit=result_limit,
+                                app_filter=query_app_filter if query_app_filter != "All" else None,
+                                rerank=use_reranker,
+                            )
+
+                            debug_info.append(f"Got {len(matches)} matches from embedding service")
+
+                            for match in matches:
+                                frame = db.get_frame(match["frame_id"])
+                                if not frame:
+                                    debug_info.append(f"Frame {match['frame_id']} not found")
+                                    continue
+                                block = db.get_text_block(match["block_id"])
+                                if not block:
+                                    debug_info.append(f"Block {match['block_id']} not found")
+                                    continue
+                                search_results.append({
+                                    "window_title": frame.get("window_title") or "Untitled",
+                                    "app_name": frame.get("app_name") or "Unknown",
+                                    "timestamp": frame.get("timestamp"),
+                                    "text": block.get("text", ""),
+                                    "score": 1 - match.get("distance", 0.0) if match.get("distance") is not None else None,
+                                    "method": "semantic",
+                                    "frame_id": frame.get("frame_id"),
+                                })
+                        except Exception as e:
+                            st.warning(f"⚠️ Semantic search failed: {str(e)}. Falling back to full-text search.")
+                            debug_info.append(f"Semantic search error: {str(e)}")
+                            use_semantic = False  # Fall back to FTS
+
+                    if not use_semantic:
+                        # Use full-text search
+                        debug_info.append("Using full-text search")
+                        results = db.search_text(
+                            query=query_text,
+                            app_filter=query_app_filter if query_app_filter != "All" else None,
+                            start_timestamp=None,
+                            end_timestamp=None,
+                            limit=result_limit,
+                        )
+                        debug_info.append(f"Got {len(results)} results from FTS")
+
+                        for result in results:
+                            search_results.append({
+                                "window_title": result.get("window_title") or "Untitled",
+                                "app_name": result.get("app_name") or "Unknown",
+                                "timestamp": result.get("timestamp"),
+                                "text": result.get("text", ""),
+                                "score": result.get("score"),
+                                "method": "fts",
+                                "frame_id": result.get("frame_id"),
+                            })
+
+                    db.close()
+
+                    # Display results
+                    if not search_results:
+                        st.warning("🤷 No results found. Try different keywords or try full-text search!")
+                        with st.expander("🐛 Debug Info"):
+                            for info in debug_info:
+                                st.text(info)
+                    else:
+                        st.success(f"✨ Found {len(search_results)} results")
+
+                        for i, result in enumerate(search_results):
+                            timestamp = datetime.fromtimestamp(result["timestamp"])
+
+                            # Calculate display score
+                            score_text = ""
+                            if result.get("score") is not None:
+                                if result["method"] == "semantic":
+                                    score_label = "Similarity"
+                                    score_val = result["score"]
+                                else:
+                                    score_label = "Relevance"
+                                    score_val = 1 / (1 + result["score"]) if result["score"] >= 0 else result["score"]
+                                score_text = f"**{score_label}:** {score_val:.1%}"
+
+                            # Result card
+                            with st.container():
+                                st.markdown(f"""
+                                <div style="background: rgba(102, 126, 234, 0.1); padding: 1.5rem; border-radius: 0.75rem; margin-bottom: 1rem; border-left: 4px solid #667eea;">
+                                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
+                                        <h4 style="color: #667eea; margin: 0;">{result['window_title']}</h4>
+                                        <span style="color: #aaa; font-size: 0.85rem;">{timestamp.strftime('%Y-%m-%d %H:%M:%S')}</span>
+                                    </div>
+                                    <div style="margin-bottom: 0.75rem;">
+                                        <span style="color: #aaa; font-size: 0.9rem;">{result['app_name']}</span>
+                                        {f'<span style="color: #888; margin-left: 1rem; font-size: 0.85rem;">{score_text}</span>' if score_text else ''}
+                                    </div>
+                                    <div style="color: #e0e0e0; line-height: 1.6;">
+                                        {result['text'][:300]}{'...' if len(result['text']) > 300 else ''}
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+
+                                # View Frame button
+                                if st.button(f"👁️ View Frame", key=f"view_result_{i}"):
+                                    st.session_state['selected_frame'] = result['frame_id']
+                                    st.rerun()
+
+                except Exception as e:
+                    st.error(f"❌ Search error: {str(e)}")
+                    import traceback
+                    with st.expander("Error Details"):
+                        st.code(traceback.format_exc())
+
+        st.markdown("---")
+
+        # Stats row - AT THE TOP
+        st.markdown("### 📊 Daily Overview")
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.markdown(f"""
+            <div class="stat-box">
+                <h3 style="color: #667eea; margin: 0;">📸 {stats['frame_count']}</h3>
+                <p style="margin: 0.5rem 0 0 0; color: #aaa;">Frames Captured</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col2:
+            st.markdown(f"""
+            <div class="stat-box">
+                <h3 style="color: #667eea; margin: 0;">📝 {stats['text_count']}</h3>
+                <p style="margin: 0.5rem 0 0 0; color: #aaa;">Text Blocks</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col3:
+            st.markdown(f"""
+            <div class="stat-box">
+                <h3 style="color: #667eea; margin: 0;">💬 {stats['total_chars']:,}</h3>
+                <p style="margin: 0.5rem 0 0 0; color: #aaa;">Characters</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col4:
+            st.markdown(f"""
+            <div class="stat-box">
+                <h3 style="color: #667eea; margin: 0;">🎯 {len(stats['top_apps'])}</h3>
+                <p style="margin: 0.5rem 0 0 0; color: #aaa;">Apps Used</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # Top apps section - WITH READABLE TEXT
+        if stats['top_apps']:
+            st.markdown("### 📱 Top Applications")
+            for app in stats['top_apps']:
+                # Custom styled progress bar with readable text
+                progress_value = app['count'] / stats['frame_count']
+                st.markdown(f"""
+                <div style="margin-bottom: 1rem;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                        <span style="color: #fafafa; font-weight: 600;">{app['app_name']}</span>
+                        <span style="color: #aaa;">{app['count']} frames</span>
+                    </div>
+                    <div style="background: rgba(255, 255, 255, 0.1); border-radius: 0.5rem; height: 0.75rem; overflow: hidden;">
+                        <div style="background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+                                    width: {progress_value * 100}%; height: 100%; border-radius: 0.5rem;"></div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+        st.markdown("---")
+
         # Summary cards with embedded timelines
         if show_summary and stats['frame_count'] > 0:
-            summaries = self.get_summaries_for_day(selected_datetime)
+            with st.spinner("Loading AI summaries..."):
+                summaries = self.get_summaries_for_day(selected_datetime)
 
             if summaries:
                 for summary in summaries:
@@ -576,111 +958,152 @@ class SecondBrainUI:
                                                 caption=f"{datetime.fromtimestamp(frame['timestamp']).strftime('%H:%M:%S')}",
                                                 use_container_width=True
                                             )
-                                            if st.button(f"View Details", key=f"btn_{frame['frame_id']}"):
+                                            if st.button(f"View Details", key=f"btn_{summary['start_timestamp']}_{hour}_{frame['frame_id']}"):
                                                 st.session_state['selected_frame'] = frame['frame_id']
                                                 st.rerun()
             else:
-                st.info("💡 AI summaries will appear here once generated (hourly). Keep Second Brain running to generate summaries automatically.")
-        
-        # Stats row
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.markdown(f"""
-            <div class="stat-box">
-                <h3 style="color: #667eea; margin: 0;">📸 {stats['frame_count']}</h3>
-                <p style="margin: 0.5rem 0 0 0; color: #666;">Frames Captured</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown(f"""
-            <div class="stat-box">
-                <h3 style="color: #667eea; margin: 0;">📝 {stats['text_count']}</h3>
-                <p style="margin: 0.5rem 0 0 0; color: #666;">Text Blocks</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col3:
-            st.markdown(f"""
-            <div class="stat-box">
-                <h3 style="color: #667eea; margin: 0;">💬 {stats['total_chars']:,}</h3>
-                <p style="margin: 0.5rem 0 0 0; color: #666;">Characters</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col4:
-            st.markdown(f"""
-            <div class="stat-box">
-                <h3 style="color: #667eea; margin: 0;">🎯 {len(stats['top_apps'])}</h3>
-                <p style="margin: 0.5rem 0 0 0; color: #666;">Apps Used</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
-        # Top apps
-        if stats['top_apps']:
-            st.subheader("📊 Top Applications")
-            for app in stats['top_apps']:
-                st.progress(
-                    app['count'] / stats['frame_count'],
-                    text=f"{app['app_name']}: {app['count']} frames"
-                )
-        
-        # Selected frame details - using container to force visibility
+                st.markdown("""
+                <div style="padding: 3rem; text-align: center; background: linear-gradient(135deg, rgba(102, 126, 234, 0.2) 0%, rgba(118, 75, 162, 0.2) 100%); border-radius: 1rem; margin: 2rem 0;">
+                    <h2 style="color: #667eea; margin-bottom: 1rem;">🤖 No AI Summaries Yet</h2>
+                    <p style="font-size: 1.1rem; color: #aaa; margin-bottom: 1.5rem;">
+                        AI summaries are generated automatically every hour when Second Brain is running.
+                    </p>
+                    <div style="background: rgba(255, 255, 255, 0.05); padding: 1.5rem; border-radius: 0.75rem; max-width: 500px; margin: 0 auto; box-shadow: 0 4px 6px rgba(0,0,0,0.5); border: 1px solid rgba(102, 126, 234, 0.3);">
+                        <p style="color: #fafafa; margin: 0;"><strong>💡 Pro Tip:</strong> Keep Second Brain running to build up your timeline and get insights!</p>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+        # Selected frame details - enhanced modal-style view
         if 'selected_frame' in st.session_state:
-            # Scroll target
-            st.markdown('<a id="frame-details"></a>', unsafe_allow_html=True)
+            # Add scroll target and visual indicator
+            st.markdown("""
+            <div id="frame-details-section" style="scroll-margin-top: 100px;"></div>
+            <script>
+                // Auto-scroll to frame details
+                setTimeout(function() {
+                    document.getElementById('frame-details-section').scrollIntoView({behavior: 'smooth', block: 'start'});
+                }, 100);
+            </script>
+            """, unsafe_allow_html=True)
 
-            frame_details_container = st.container()
+            st.success("📍 **Frame details loaded below!** Scroll down to see full information.")
+            st.markdown("---")
 
-            with frame_details_container:
-                st.markdown("---")
-                st.subheader("🔍 Frame Details")
+            # Header with close button
+            col_header, col_close = st.columns([6, 1])
+            with col_header:
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            padding: 1.5rem; border-radius: 1rem; margin-bottom: 1.5rem;">
+                    <h2 style="color: white; margin: 0;">🔍 Frame Details</h2>
+                </div>
+                """, unsafe_allow_html=True)
+            with col_close:
+                if st.button("✕ Close", key="close_frame", help="Close frame details"):
+                    del st.session_state['selected_frame']
+                    st.rerun()
 
-                frame_id = st.session_state['selected_frame']
+            frame_id = st.session_state['selected_frame']
 
-                # Get frame data
+            # Get frame data with loading indicator
+            with st.spinner("Loading frame details..."):
                 cursor = self.conn.cursor()
                 cursor.execute("SELECT * FROM frames WHERE frame_id = ?", (frame_id,))
                 frame = dict(cursor.fetchone())
-
-                # Get text blocks to calculate confidence
                 text_blocks = self.get_text_for_frame(frame_id)
-                avg_confidence = None
-                if text_blocks:
-                    confidences = [block['confidence'] for block in text_blocks if block.get('confidence')]
-                    if confidences:
-                        avg_confidence = sum(confidences) / len(confidences)
 
-                col1, col2 = st.columns([1, 1])
+            # Calculate confidence
+            avg_confidence = None
+            if text_blocks:
+                confidences = [block['confidence'] for block in text_blocks if block.get('confidence')]
+                if confidences:
+                    avg_confidence = sum(confidences) / len(confidences)
 
-                with col1:
-                    # Display full image
-                    frame_path = self.frames_dir / frame['file_path']
-                    if frame_path.exists():
-                        st.image(str(frame_path), use_container_width=True)
+            # Enhanced two-column layout
+            col1, col2 = st.columns([3, 2])
 
-                with col2:
-                    # Display metadata with confidence at top
-                    st.markdown(f"**Time**: {datetime.fromtimestamp(frame['timestamp']).strftime('%Y-%m-%d %H:%M:%S')}")
-                    st.markdown(f"**Application**: {frame['app_name']}")
-                    st.markdown(f"**Window**: {frame['window_title']}")
-                    st.markdown(f"**Resolution**: {frame['screen_resolution']}")
-                    if avg_confidence is not None:
-                        st.markdown(f"**Confidence**: {avg_confidence:.1%}")
+            with col1:
+                # Display full image in a styled container - dark mode
+                st.markdown("""
+                <div style="background: rgba(255, 255, 255, 0.05); padding: 1rem; border-radius: 1rem;
+                            box-shadow: 0 8px 16px rgba(0,0,0,0.5); margin-bottom: 1rem;
+                            border: 1px solid rgba(102, 126, 234, 0.2);">
+                """, unsafe_allow_html=True)
+                frame_path = self.frames_dir / frame['file_path']
+                if frame_path.exists():
+                    st.image(str(frame_path), use_container_width=True)
+                st.markdown("</div>", unsafe_allow_html=True)
 
-                    st.markdown("---")
+            with col2:
+                # Metadata cards with better styling - dark mode
+                st.markdown("""
+                <div style="background: rgba(255, 255, 255, 0.05); padding: 1.5rem; border-radius: 1rem;
+                            box-shadow: 0 4px 6px rgba(0,0,0,0.5); margin-bottom: 1rem;
+                            border: 1px solid rgba(102, 126, 234, 0.2);">
+                """, unsafe_allow_html=True)
 
-                    # Display OCR text
-                    if text_blocks:
-                        st.markdown("**Extracted Text:**")
-                        for block in text_blocks:
-                            with st.expander(f"Text Block ({block['block_type']})", expanded=True):
-                                st.text(block['text'])
-                    else:
-                        st.info("No text extracted for this frame")
+                st.markdown(f"""
+                <div style="margin-bottom: 1rem;">
+                    <p style="color: #888; font-size: 0.85rem; margin: 0;">TIME</p>
+                    <p style="color: #fafafa; font-size: 1.1rem; font-weight: 600; margin: 0.25rem 0 0 0;">
+                        {datetime.fromtimestamp(frame['timestamp']).strftime('%H:%M:%S')}
+                    </p>
+                </div>
+
+                <div style="margin-bottom: 1rem;">
+                    <p style="color: #888; font-size: 0.85rem; margin: 0;">APPLICATION</p>
+                    <p style="color: #fafafa; font-size: 1.1rem; font-weight: 600; margin: 0.25rem 0 0 0;">
+                        {frame['app_name']}
+                    </p>
+                </div>
+
+                <div style="margin-bottom: 1rem;">
+                    <p style="color: #888; font-size: 0.85rem; margin: 0;">WINDOW</p>
+                    <p style="color: #fafafa; font-size: 0.95rem; margin: 0.25rem 0 0 0;">
+                        {frame['window_title']}
+                    </p>
+                </div>
+
+                <div style="margin-bottom: 1rem;">
+                    <p style="color: #888; font-size: 0.85rem; margin: 0;">RESOLUTION</p>
+                    <p style="color: #fafafa; font-size: 0.95rem; margin: 0.25rem 0 0 0;">
+                        {frame['screen_resolution']}
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+
+                if avg_confidence is not None:
+                    confidence_color = "#4ade80" if avg_confidence > 0.8 else "#fbbf24" if avg_confidence > 0.5 else "#f87171"
+                    st.markdown(f"""
+                    <div style="margin-bottom: 1rem;">
+                        <p style="color: #888; font-size: 0.85rem; margin: 0;">OCR CONFIDENCE</p>
+                        <p style="color: {confidence_color}; font-size: 1.3rem; font-weight: 700; margin: 0.25rem 0 0 0;">
+                            {avg_confidence:.1%}
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            # Display OCR text in full width
+            st.markdown("### 📝 Extracted Text")
+            if text_blocks:
+                for block in text_blocks:
+                    with st.expander(f"Text Block ({block['block_type']})", expanded=True):
+                        st.markdown(f"""
+                        <div style="background: rgba(255, 255, 255, 0.05); padding: 1rem; border-radius: 0.5rem;
+                                    font-family: monospace; white-space: pre-wrap; line-height: 1.6; color: #e0e0e0;
+                                    border: 1px solid rgba(102, 126, 234, 0.2);">
+                        {block['text']}
+                        </div>
+                        """, unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <div style="padding: 2rem; text-align: center; background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%); border-radius: 0.75rem;">
+                    <p style="color: #888; margin: 0;">📄 No text content detected in this frame</p>
+                </div>
+                """, unsafe_allow_html=True)
 
 
 def main():

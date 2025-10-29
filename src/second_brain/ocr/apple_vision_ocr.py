@@ -97,8 +97,11 @@ class AppleVisionOCR:
                 # Get top candidate
                 candidates = observation.topCandidates_(1)
                 if candidates and len(candidates) > 0:
-                    text_lines.append(candidates[0].string())
-            
+                    candidate = candidates[0]
+                    text = candidate.string()
+                    confidence = float(candidate.confidence())
+                    text_lines.append((text, confidence))
+
             return text_lines
             
         except Exception as e:
@@ -133,23 +136,30 @@ class AppleVisionOCR:
             if not text_lines:
                 logger.debug("no_text_found", frame_id=frame_id)
                 return []
-            
+
+            # Extract text strings and confidences
+            texts = [line[0] for line in text_lines]
+            confidences = [line[1] for line in text_lines]
+
             # Combine all text lines
-            full_text = "\n".join(text_lines)
-            
+            full_text = "\n".join(texts)
+
+            # Calculate average confidence across all text lines (don't use fake fallback)
+            avg_confidence = sum(confidences) / len(confidences) if confidences else None
+
             # Normalize text
             normalized_text = self._normalize_text(full_text)
-            
+
             # Determine block type based on content
             block_type = self._determine_block_type(full_text)
-            
+
             # Create text block
             text_block = {
                 "block_id": str(uuid.uuid4()),
                 "frame_id": frame_id,
                 "text": full_text,
                 "normalized_text": normalized_text,
-                "confidence": 0.95,  # Vision framework is generally very accurate
+                "confidence": round(avg_confidence, 4) if avg_confidence is not None else None,  # Actual confidence from Vision framework
                 "block_type": block_type,
             }
             
