@@ -501,6 +501,16 @@ class SecondBrainUI:
         if start_hour > end_hour:
             st.sidebar.error("Start hour must be <= end hour")
             return
+
+        # Preview limit control
+        preview_limit = st.sidebar.slider(
+            "Frames per hour (preview)",
+            min_value=5,
+            max_value=100,
+            value=10,
+            step=5,
+            help="Number of frames to display per hour. Higher values load more data."
+        )
         
         # Summary cards - show AI-generated summaries from database
         if show_summary and stats['frame_count'] > 0:
@@ -580,7 +590,7 @@ class SecondBrainUI:
             app_filter=app_filter,
             start_hour=int(start_hour),
             end_hour=int(end_hour),
-            preview_per_hour=10
+            preview_per_hour=preview_limit
         )
 
         if not frames_by_hour:
