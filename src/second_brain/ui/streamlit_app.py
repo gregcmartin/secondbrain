@@ -654,55 +654,59 @@ class SecondBrainUI:
                 if showing_count < total_frames:
                     st.info(f"💡 {total_frames - showing_count} more frames available in this hour. Adjust filters or increase preview limit to see more.")
         
-        # Selected frame details
+        # Selected frame details - using container to force visibility
         if 'selected_frame' in st.session_state:
-            st.markdown("---")
+            # Scroll target
+            st.markdown('<a id="frame-details"></a>', unsafe_allow_html=True)
 
-            # JavaScript to scroll to this section
-            st.markdown('<div id="frame-details"></div>', unsafe_allow_html=True)
-            st.markdown("""
-                <script>
-                    const element = document.getElementById('frame-details');
-                    if (element) {
-                        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }
-                </script>
-            """, unsafe_allow_html=True)
+            frame_details_container = st.container()
 
-            st.subheader("🔍 Frame Details")
-            
-            frame_id = st.session_state['selected_frame']
-            
-            # Get frame data
-            cursor = self.conn.cursor()
-            cursor.execute("SELECT * FROM frames WHERE frame_id = ?", (frame_id,))
-            frame = dict(cursor.fetchone())
-            
-            col1, col2 = st.columns([1, 1])
-            
-            with col1:
-                # Display full image
-                frame_path = self.frames_dir / frame['file_path']
-                if frame_path.exists():
-                    st.image(str(frame_path), use_container_width=True)
-            
-            with col2:
-                # Display metadata
-                st.markdown(f"**Time**: {datetime.fromtimestamp(frame['timestamp']).strftime('%Y-%m-%d %H:%M:%S')}")
-                st.markdown(f"**Application**: {frame['app_name']}")
-                st.markdown(f"**Window**: {frame['window_title']}")
-                st.markdown(f"**Resolution**: {frame['screen_resolution']}")
-                
-                # Display OCR text
+            with frame_details_container:
+                st.markdown("---")
+                st.subheader("🔍 Frame Details")
+
+                frame_id = st.session_state['selected_frame']
+
+                # Get frame data
+                cursor = self.conn.cursor()
+                cursor.execute("SELECT * FROM frames WHERE frame_id = ?", (frame_id,))
+                frame = dict(cursor.fetchone())
+
+                # Get text blocks to calculate confidence
                 text_blocks = self.get_text_for_frame(frame_id)
+                avg_confidence = None
                 if text_blocks:
-                    st.markdown("**Extracted Text:**")
-                    for block in text_blocks:
-                        with st.expander(f"Text Block ({block['block_type']})", expanded=True):
-                            st.text(block['text'])
-                            st.caption(f"Confidence: {block['confidence']:.2%}")
-                else:
-                    st.info("No text extracted for this frame")
+                    confidences = [block['confidence'] for block in text_blocks if block.get('confidence')]
+                    if confidences:
+                        avg_confidence = sum(confidences) / len(confidences)
+
+                col1, col2 = st.columns([1, 1])
+
+                with col1:
+                    # Display full image
+                    frame_path = self.frames_dir / frame['file_path']
+                    if frame_path.exists():
+                        st.image(str(frame_path), use_container_width=True)
+
+                with col2:
+                    # Display metadata with confidence at top
+                    st.markdown(f"**Time**: {datetime.fromtimestamp(frame['timestamp']).strftime('%Y-%m-%d %H:%M:%S')}")
+                    st.markdown(f"**Application**: {frame['app_name']}")
+                    st.markdown(f"**Window**: {frame['window_title']}")
+                    st.markdown(f"**Resolution**: {frame['screen_resolution']}")
+                    if avg_confidence is not None:
+                        st.markdown(f"**Confidence**: {avg_confidence:.1%}")
+
+                    st.markdown("---")
+
+                    # Display OCR text
+                    if text_blocks:
+                        st.markdown("**Extracted Text:**")
+                        for block in text_blocks:
+                            with st.expander(f"Text Block ({block['block_type']})", expanded=True):
+                                st.text(block['text'])
+                    else:
+                        st.info("No text extracted for this frame")
 
 
 def main():
