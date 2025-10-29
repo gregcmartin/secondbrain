@@ -1,7 +1,7 @@
 """Streamlit UI for Second Brain - Daily summaries and visual timeline."""
 
 import streamlit as st
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from pathlib import Path
 import sqlite3
 from typing import List, Dict, Any
@@ -141,9 +141,9 @@ class SecondBrainUI:
             Dict mapping hour -> list of frames (limited to preview_per_hour)
         """
         if start_time is None:
-            start_time = datetime.min.time()
+            start_time = time(0, 0)
         if end_time is None:
-            end_time = datetime.max.time()
+            end_time = time(23, 59, 59)
 
         start_dt = datetime.combine(date.date(), start_time)
         end_dt = datetime.combine(date.date(), end_time)
@@ -502,9 +502,9 @@ class SecondBrainUI:
         st.sidebar.subheader("Time Range")
         col1, col2 = st.sidebar.columns(2)
         with col1:
-            start_time = st.time_input("Start Time", value=datetime.min.time())
+            start_time = st.time_input("Start Time", value=time(0, 0))
         with col2:
-            end_time = st.time_input("End Time", value=datetime.max.time())
+            end_time = st.time_input("End Time", value=time(23, 59, 59))
 
         # Preview limit control - up to 1000 frames per hour
         preview_limit = st.sidebar.number_input(
