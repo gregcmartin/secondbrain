@@ -528,15 +528,16 @@ class SecondBrainUI:
             help="Number of frames to display per hour. Set to 1000 to see all frames."
         )
         
-        # Summary cards - show AI-generated summaries from database
+        # Summary cards with embedded timelines
         if show_summary and stats['frame_count'] > 0:
             summaries = self.get_summaries_for_day(selected_datetime)
-            
+
             if summaries:
                 for summary in summaries:
                     start_time = datetime.fromtimestamp(summary['start_timestamp'])
                     end_time = datetime.fromtimestamp(summary['end_timestamp'])
-                    
+
+                    # Display summary card
                     st.markdown(f"""
                     <div class="summary-card">
                         <h2>🤖 AI Summary - {start_time.strftime('%H:%M')} to {end_time.strftime('%H:%M')}</h2>
@@ -546,6 +547,38 @@ class SecondBrainUI:
                         </p>
                     </div>
                     """, unsafe_allow_html=True)
+
+                    # Embedded timeline for this hour
+                    frames_by_hour = self.get_frames_for_day(
+                        selected_datetime,
+                        app_filter=app_filter,
+                        start_time=start_time.time(),
+                        end_time=end_time.time(),
+                        preview_per_hour=10
+                    )
+
+                    if frames_by_hour:
+                        for hour in sorted(frames_by_hour.keys()):
+                            hour_data = frames_by_hour[hour]
+                            hour_frames = hour_data['frames']
+                            total_frames = hour_data['total']
+
+                            with st.expander(f"⏰ {hour:02d}:00 - {hour:02d}:59 ({total_frames} frames, showing {len(hour_frames)})", expanded=False):
+                                cols = st.columns(frames_per_row)
+                                for idx, frame in enumerate(hour_frames):
+                                    col_idx = idx % frames_per_row
+
+                                    with cols[col_idx]:
+                                        frame_path = self.frames_dir / frame['file_path']
+                                        if frame_path.exists():
+                                            st.image(
+                                                str(frame_path),
+                                                caption=f"{datetime.fromtimestamp(frame['timestamp']).strftime('%H:%M:%S')}",
+                                                use_container_width=True
+                                            )
+                                            if st.button(f"View Details", key=f"btn_{frame['frame_id']}"):
+                                                st.session_state['selected_frame'] = frame['frame_id']
+                                                st.rerun()
             else:
                 st.info("💡 AI summaries will appear here once generated (hourly). Keep Second Brain running to generate summaries automatically.")
         
@@ -594,65 +627,6 @@ class SecondBrainUI:
                     app['count'] / stats['frame_count'],
                     text=f"{app['app_name']}: {app['count']} frames"
                 )
-        
-        st.markdown("---")
-
-        # Timeline
-        st.subheader("🎬 Visual Timeline")
-
-        # Get filtered frames (lazy loaded with preview limit)
-        frames_by_hour = self.get_frames_for_day(
-            selected_datetime,
-            app_filter=app_filter,
-            start_time=start_time,
-            end_time=end_time,
-            preview_per_hour=preview_limit
-        )
-
-        if not frames_by_hour:
-            st.info(f"No frames found for selected filters")
-            return
-
-        # Display timeline by hour
-        for hour in sorted(frames_by_hour.keys()):
-            hour_data = frames_by_hour[hour]
-            hour_frames = hour_data['frames']
-            total_frames = hour_data['total']
-            showing_count = len(hour_frames)
-
-            # Header shows total frames and how many are displayed
-            header = f"⏰ {hour:02d}:00 - {hour:02d}:59 ({total_frames} frames"
-            if showing_count < total_frames:
-                header += f", showing {showing_count})"
-            else:
-                header += ")"
-
-            with st.expander(header, expanded=(hour == datetime.now().hour)):
-                # Display frames in grid
-                cols = st.columns(frames_per_row)
-                for idx, frame in enumerate(hour_frames):
-                    col_idx = idx % frames_per_row
-
-                    with cols[col_idx]:
-                        # Get frame image path
-                        frame_path = self.frames_dir / frame['file_path']
-
-                        if frame_path.exists():
-                            # Display thumbnail
-                            st.image(
-                                str(frame_path),
-                                caption=f"{datetime.fromtimestamp(frame['timestamp']).strftime('%H:%M:%S')} - {frame['app_name']}",
-                                use_container_width=True
-                            )
-
-                            # Show details on click
-                            if st.button(f"View Details", key=f"btn_{frame['frame_id']}"):
-                                st.session_state['selected_frame'] = frame['frame_id']
-                                st.rerun()
-
-                # Show "more available" message if there are more frames
-                if showing_count < total_frames:
-                    st.info(f"💡 {total_frames - showing_count} more frames available in this hour. Adjust filters or increase preview limit to see more.")
         
         # Selected frame details - using container to force visibility
         if 'selected_frame' in st.session_state:
