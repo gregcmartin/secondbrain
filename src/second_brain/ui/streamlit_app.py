@@ -127,20 +127,66 @@ class SecondBrainUI:
             'total_chars': total_chars,
         }
     
-    def get_frames_for_day(self, date: datetime, limit: int = 100) -> List[Dict[str, Any]]:
-        """Get frames for a specific day."""
-        start_ts = int(date.replace(hour=0, minute=0, second=0).timestamp())
-        end_ts = int(date.replace(hour=23, minute=59, second=59).timestamp())
-        
+    def get_frames_for_day(self, date: datetime, app_filter: str = None, start_hour: int = 0, end_hour: int = 23, preview_per_hour: int = 10) -> Dict[int, List[Dict[str, Any]]]:
+        """Get frames for a specific day with filtering and lazy loading.
+
+        Args:
+            date: Date to query
+            app_filter: Optional app name to filter by
+            start_hour: Start hour (0-23)
+            end_hour: End hour (0-23)
+            preview_per_hour: Number of frames to load per hour as preview
+
+        Returns:
+            Dict mapping hour -> list of frames (limited to preview_per_hour)
+        """
+        start_ts = int(date.replace(hour=start_hour, minute=0, second=0).timestamp())
+        end_ts = int(date.replace(hour=end_hour, minute=59, second=59).timestamp())
+
         cursor = self.conn.cursor()
-        cursor.execute("""
+
+        # Build query with optional app filter
+        query = """
             SELECT * FROM frames
             WHERE timestamp BETWEEN ? AND ?
-            ORDER BY timestamp ASC
-            LIMIT ?
-        """, (start_ts, end_ts, limit))
-        
-        return [dict(row) for row in cursor.fetchall()]
+        """
+        params = [start_ts, end_ts]
+
+        if app_filter and app_filter != "All":
+            query += " AND app_name = ?"
+            params.append(app_filter)
+
+        query += " ORDER BY timestamp ASC"
+
+        cursor.execute(query, params)
+        all_frames = [dict(row) for row in cursor.fetchall()]
+
+        # Group by hour and limit to preview
+        frames_by_hour = {}
+        for frame in all_frames:
+            hour = datetime.fromtimestamp(frame['timestamp']).hour
+            if hour not in frames_by_hour:
+                frames_by_hour[hour] = {'frames': [], 'total': 0}
+
+            frames_by_hour[hour]['total'] += 1
+            if len(frames_by_hour[hour]['frames']) < preview_per_hour:
+                frames_by_hour[hour]['frames'].append(frame)
+
+        return frames_by_hour
+
+    def get_apps_for_day(self, date: datetime) -> List[str]:
+        """Get list of apps used on a specific day."""
+        start_ts = int(date.replace(hour=0, minute=0, second=0).timestamp())
+        end_ts = int(date.replace(hour=23, minute=59, second=59).timestamp())
+
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT DISTINCT app_name FROM frames
+            WHERE timestamp BETWEEN ? AND ?
+            ORDER BY app_name
+        """, (start_ts, end_ts))
+
+        return [row[0] for row in cursor.fetchall()]
     
     def get_text_for_frame(self, frame_id: str) -> List[Dict[str, Any]]:
         """Get text blocks for a frame."""
@@ -431,6 +477,30 @@ class SecondBrainUI:
         # UI-only settings (not persisted to config)
         show_summary = st.sidebar.checkbox("Show AI Summary", value=True, help="Display AI-generated summaries if available")
         frames_per_row = st.sidebar.slider("Frames per row", 2, 6, 4, help="How many frames to display per row in timeline")
+
+        # Filters
+        st.sidebar.markdown("---")
+        st.sidebar.header("🔍 Filters")
+
+        # App filter
+        available_apps = self.get_apps_for_day(selected_datetime)
+        app_filter = st.sidebar.selectbox(
+            "Filter by App",
+            options=["All"] + available_apps,
+            index=0,
+            help="Filter frames by application"
+        )
+
+        # Time range filter
+        col1, col2 = st.sidebar.columns(2)
+        with col1:
+            start_hour = st.number_input("Start Hour", min_value=0, max_value=23, value=0, step=1)
+        with col2:
+            end_hour = st.number_input("End Hour", min_value=0, max_value=23, value=23, step=1)
+
+        if start_hour > end_hour:
+            st.sidebar.error("Start hour must be <= end hour")
+            return
         
         # Summary cards - show AI-generated summaries from database
         if show_summary and stats['frame_count'] > 0:
@@ -500,49 +570,62 @@ class SecondBrainUI:
                 )
         
         st.markdown("---")
-        
+
         # Timeline
         st.subheader("🎬 Visual Timeline")
-        
-        frames = self.get_frames_for_day(selected_datetime, limit=200)
-        
-        if not frames:
-            st.info(f"No frames captured on {selected_date.strftime('%B %d, %Y')}")
+
+        # Get filtered frames (lazy loaded with preview limit)
+        frames_by_hour = self.get_frames_for_day(
+            selected_datetime,
+            app_filter=app_filter,
+            start_hour=int(start_hour),
+            end_hour=int(end_hour),
+            preview_per_hour=10
+        )
+
+        if not frames_by_hour:
+            st.info(f"No frames found for selected filters")
             return
-        
-        # Group frames by hour
-        frames_by_hour = {}
-        for frame in frames:
-            hour = datetime.fromtimestamp(frame['timestamp']).hour
-            if hour not in frames_by_hour:
-                frames_by_hour[hour] = []
-            frames_by_hour[hour].append(frame)
-        
+
         # Display timeline by hour
         for hour in sorted(frames_by_hour.keys()):
-            with st.expander(f"⏰ {hour:02d}:00 - {hour:02d}:59 ({len(frames_by_hour[hour])} frames)", expanded=(hour == datetime.now().hour)):
-                hour_frames = frames_by_hour[hour]
-                
+            hour_data = frames_by_hour[hour]
+            hour_frames = hour_data['frames']
+            total_frames = hour_data['total']
+            showing_count = len(hour_frames)
+
+            # Header shows total frames and how many are displayed
+            header = f"⏰ {hour:02d}:00 - {hour:02d}:59 ({total_frames} frames"
+            if showing_count < total_frames:
+                header += f", showing {showing_count})"
+            else:
+                header += ")"
+
+            with st.expander(header, expanded=(hour == datetime.now().hour)):
                 # Display frames in grid
                 cols = st.columns(frames_per_row)
                 for idx, frame in enumerate(hour_frames):
                     col_idx = idx % frames_per_row
-                    
+
                     with cols[col_idx]:
                         # Get frame image path
                         frame_path = self.frames_dir / frame['file_path']
-                        
+
                         if frame_path.exists():
                             # Display thumbnail
                             st.image(
                                 str(frame_path),
-                                caption=f"{datetime.fromtimestamp(frame['timestamp']).strftime('%H:%M:%S')}",
+                                caption=f"{datetime.fromtimestamp(frame['timestamp']).strftime('%H:%M:%S')} - {frame['app_name']}",
                                 use_container_width=True
                             )
-                            
+
                             # Show details on click
                             if st.button(f"View Details", key=f"btn_{frame['frame_id']}"):
                                 st.session_state['selected_frame'] = frame['frame_id']
+
+                # Show "more available" message if there are more frames
+                if showing_count < total_frames:
+                    st.info(f"💡 {total_frames - showing_count} more frames available in this hour. Adjust filters or increase preview limit to see more.")
         
         # Selected frame details
         if 'selected_frame' in st.session_state:
