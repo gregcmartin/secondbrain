@@ -4,7 +4,6 @@ Detects user activity (keyboard/mouse) to adjust capture frame rate.
 """
 
 import time
-from typing import Optional
 
 import structlog
 from Quartz import (

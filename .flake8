@@ -1,0 +1,19 @@
+[flake8]
+max-line-length = 120
+extend-ignore =
+    E203,
+    W503,
+    W293,
+    E501,
+exclude =
+    .venv311/,
+    venv/,
+    .venv/,
+    build/,
+    dist/,
+    web/timeline/node_modules/,
+    web/timeline/dist/
+
+# Long, embedded HTML/strings often exceed standard length
+per-file-ignores =
+    src/second_brain/ui/streamlit_app.py:E501,

@@ -1,7 +1,6 @@
 """Configuration management for Second Brain."""
 
 import json
-import os
 from pathlib import Path
 from typing import Any, Dict
 
@@ -20,7 +19,7 @@ DEFAULT_CONFIG = {
         "idle_threshold_seconds": 30.0,
     },
     "ocr": {
-        "engine": "openai",
+        "engine": "apple",
         "model": "gpt-5",
         "api_key_env": "OPENAI_API_KEY",
         "batch_size": 5,

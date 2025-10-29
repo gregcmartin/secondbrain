@@ -1,7 +1,9 @@
 """Runtime patches applied before application imports.
 
-Currently used to provide backwards compatibility shims for third-party
-packages whose APIs changed underneath pinned dependencies.
+Purposes:
+- Provide backwards-compatibility shims (e.g., huggingface_hub.cached_download)
+- Disable noisy/buggy third‑party telemetry (PostHog from some deps)
+- Tame HF tokenizers parallelism fork warnings
 """
 
 from __future__ import annotations
@@ -105,3 +107,52 @@ def _ensure_huggingface_cached_download() -> None:
 
 
 _ensure_huggingface_cached_download()
+
+
+def _disable_third_party_telemetry() -> None:
+    """Disable PostHog/telemetry used by some deps (e.g., Chroma) and quiet tokenizers.
+
+    We prefer privacy and clean logs during CLI/daemon runs.
+    """
+    # Common env flags checked by various libs
+    os.environ.setdefault("POSTHOG_DISABLED", "1")
+    os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
+    os.environ.setdefault("CHROMA_TELEMETRY_ENABLED", "0")
+
+    # Avoid fork warnings from HF tokenizers
+    os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+    # Best‑effort monkey‑patch for posthog to be a no‑op if it is imported anyway
+    try:  # pragma: no cover - environment dependent
+        import posthog  # type: ignore
+
+        try:
+            # Newer SDKs export Posthog class
+            Posthog = getattr(posthog, "Posthog", None)
+            if Posthog is not None:
+                def _noop_capture(self, *args, **kwargs):  # noqa: ANN001
+                    return None
+
+                try:
+                    setattr(Posthog, "capture", _noop_capture)
+                except Exception:
+                    pass
+
+        except Exception:
+            pass
+
+        # Also patch module-level capture if present
+        try:
+            if hasattr(posthog, "capture"):
+                posthog.capture = lambda *args, **kwargs: None  # type: ignore[assignment]
+        except Exception:
+            pass
+
+    except Exception:
+        # If posthog isn't available, nothing to do
+        pass
+
+    logger.getChild("telemetry").info("third_party_telemetry_disabled")
+
+
+_disable_third_party_telemetry()

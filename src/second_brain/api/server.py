@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Generator, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -90,8 +90,190 @@ def create_app() -> FastAPI:
         stats = db.get_app_usage_stats(limit=limit)
         return {"apps": stats}
 
+    @app.post("/api/search")
+    def search(
+        payload: dict = Body(...),
+        db: Database = Depends(get_db),
+    ):
+        """Search text blocks (FTS) or semantic embeddings.
+        payload keys: query (str), limit (int), app_bundle_id (str|None), semantic (bool), reranker (bool)
+        """
+        query: str = payload.get("query", "").strip()
+        if not query:
+            raise HTTPException(status_code=400, detail="query is required")
+        limit: int = int(payload.get("limit", 10))
+        app_bundle_id = payload.get("app_bundle_id")
+        semantic = bool(payload.get("semantic", False))
+        reranker = bool(payload.get("reranker", False))
+
+        results = []
+        if semantic:
+            try:
+                from ..embeddings import EmbeddingService  # lazy import heavy deps
+
+                embedding_service = EmbeddingService()
+                matches = embedding_service.search(
+                    query=query,
+                    limit=limit,
+                    app_filter=app_bundle_id,
+                    rerank=reranker,
+                )
+                for match in matches:
+                    frame = db.get_frame(match["frame_id"]) or {}
+                    block = db.get_text_block(match["block_id"]) or {}
+                    if not block:
+                        continue
+                    results.append(
+                        {
+                            "frame_id": match["frame_id"],
+                            "block_id": match["block_id"],
+                            "timestamp": frame.get("timestamp"),
+                            "window_title": frame.get("window_title") or "Untitled",
+                            "app_name": frame.get("app_name") or "Unknown",
+                            "text": block.get("text", ""),
+                            "score": 1 - match.get("distance", 0.0)
+                            if match.get("distance") is not None
+                            else None,
+                            "method": "semantic",
+                        }
+                    )
+            except Exception as exc:
+                raise HTTPException(status_code=500, detail=f"semantic search failed: {exc}")
+        else:
+            rows = db.search_text(
+                query=query,
+                app_filter=app_bundle_id,
+                start_timestamp=None,
+                end_timestamp=None,
+                limit=limit,
+            )
+            for row in rows:
+                results.append(
+                    {
+                        "frame_id": row.get("frame_id"),
+                        "block_id": row.get("block_id"),
+                        "timestamp": row.get("timestamp"),
+                        "window_title": row.get("window_title") or "Untitled",
+                        "app_name": row.get("app_name") or "Unknown",
+                        "text": row.get("text", ""),
+                        "score": row.get("score"),
+                        "method": "fts",
+                    }
+                )
+
+        return {"results": results}
+
+    @app.post("/api/ask")
+    def ask(
+        payload: dict = Body(...),
+        db: Database = Depends(get_db),
+    ):
+        """Generate an AI answer from search results.
+        payload keys: query (str), limit (int), app_bundle_id (str|None), semantic (bool), reranker (bool)
+        """
+        query: str = payload.get("query", "").strip()
+        if not query:
+            raise HTTPException(status_code=400, detail="query is required")
+        limit: int = int(payload.get("limit", 10))
+        app_bundle_id = payload.get("app_bundle_id")
+        semantic = bool(payload.get("semantic", True))
+        reranker = bool(payload.get("reranker", False))
+
+        # Reuse search endpoint logic
+        search_response = search(
+            {
+                "query": query,
+                "limit": limit,
+                "app_bundle_id": app_bundle_id,
+                "semantic": semantic,
+                "reranker": reranker,
+            },
+            db,
+        )
+        results = search_response["results"]
+        if not results:
+            return {"answer": None, "results": []}
+
+        # Prepare context with sanitization
+        def _sanitize(s: str) -> str:
+            return "".join(
+                ch
+                if (ch == "\n" or 32 <= ord(ch) <= 126 or (ord(ch) >= 160 and ord(ch) not in (0xFFFF, 0xFFFE)))
+                else " "
+                for ch in s
+            )
+
+        context_items = []
+        apps_seen = set()
+        for i, r in enumerate(results[:40]):
+            ts = datetime.fromtimestamp(r["timestamp"]) if r.get("timestamp") else None
+            apps_seen.add(r.get("app_name", "Unknown"))
+            text = _sanitize(" ".join((r.get("text") or "").split()))[:300]
+            context_items.append(
+                f"[RELEVANCE: {'HIGH' if i < 5 else 'MEDIUM' if i < 15 else 'LOW'}]\n"
+                f"Time: {ts.strftime('%Y-%m-%d %H:%M:%S') if ts else 'Unknown'}\n"
+                f"Application: {r.get('app_name','Unknown')}\n"
+                f"Window: {r.get('window_title','')}\n"
+                f"Content:\n{text}"
+            )
+
+        context_text = ("\n\n" + "=" * 50 + "\n\n").join(context_items)
+        apps_summary = f"Applications involved: {', '.join(sorted([a for a in apps_seen if isinstance(a, str) and a]))}"
+
+        # Call OpenAI server-side so the browser never needs the API key
+        try:
+            import os
+            from openai import OpenAI
+
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise RuntimeError("OPENAI_API_KEY is not configured on server")
+            client = OpenAI(api_key=api_key)
+
+            model = "gpt-5"
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an expert assistant analyzing OCR from screen captures. Be specific and cite evidence.",
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Based on my screen activity, please answer: {query}\n\n{apps_summary}\n\nOCR Text (by relevance):\n{context_text}\n\nAnswer directly and cite snippets.",
+                    },
+                ],
+                max_completion_tokens=1200,
+            )
+            answer = response.choices[0].message.content
+            if not answer or not answer.strip():
+                # condensed retry
+                condensed = []
+                for r in results[:10]:
+                    ts = datetime.fromtimestamp(r["timestamp"]) if r.get("timestamp") else None
+                    t = _sanitize(" ".join((r.get("text") or "").split()))[:200]
+                    condensed.append(
+                        f"[{ts.strftime('%Y-%m-%d %H:%M:%S') if ts else 'Unknown'}] {r.get('app_name','Unknown')} • {r.get('window_title','')}\n{t}"
+                    )
+                condensed_ctx = "\n\n".join(condensed)
+                response2 = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "Answer succinctly using provided short OCR snippets."},
+                        {"role": "user", "content": f"Question: {query}\n\nEvidence:\n{condensed_ctx}"},
+                    ],
+                    max_completion_tokens=600,
+                )
+                answer = response2.choices[0].message.content
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"AI answer failed: {exc}")
+
+        return {"answer": answer, "results": results}
+
+    # Serve built React UI if present
+    # server.py lives at src/second_brain/api/server.py → repo root is parents[3]
     ui_dist = (
-        Path(__file__).resolve().parents[2] / "web" / "timeline" / "dist"
+        Path(__file__).resolve().parents[3] / "web" / "timeline" / "dist"
     )
     if ui_dist.exists():
         app.mount(

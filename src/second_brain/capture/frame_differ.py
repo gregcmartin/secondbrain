@@ -4,7 +4,6 @@ Detects when screen content changes significantly to avoid capturing
 duplicate frames.
 """
 
-import hashlib
 from pathlib import Path
 from typing import Optional
 
