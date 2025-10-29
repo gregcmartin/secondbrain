@@ -115,9 +115,9 @@ class CaptureService:
                     # Try to get bundle ID from process
                     bundle_id = "unknown"
                     try:
-                        process = psutil.Process(owner_pid)
-                        # Try to extract bundle ID from process info
-                        # This is a simplified approach
+                        # Attempt to inspect the process; fall back to heuristic if unavailable
+                        psutil.Process(owner_pid)
+                        # Simplified heuristic for bundle id
                         bundle_id = f"com.{owner_name.lower().replace(' ', '')}"
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         pass

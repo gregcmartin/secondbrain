@@ -1,8 +1,7 @@
 """Embedding and reranking service using Chroma, SentenceTransformers or OpenAI, and BAAI bge reranker."""
 
 import os
-from pathlib import Path
-from typing import Dict, List, Any, Optional, Iterable, Tuple
+from typing import Dict, List, Any, Optional
 
 import chromadb
 from chromadb.config import Settings
@@ -93,23 +92,12 @@ class EmbeddingService:
             metadata={"hnsw:space": "cosine"}
         )
 
-        # Optional reranker
+        # Optional reranker (lazy-init when actually used)
         self.reranker_enabled = bool(self.config.get("embeddings.reranker_enabled", False))
         self.reranker_model_name = self.config.get(
             "embeddings.reranker_model", "BAAI/bge-reranker-large"
         )
         self._reranker = None
-        if self.reranker_enabled:
-            if FlagReranker is None:
-                logger.warning("flagembedding_not_installed_reranker_disabled")
-                self.reranker_enabled = False
-            else:
-                try:
-                    self._reranker = FlagReranker(self.reranker_model_name, use_fp16=True)
-                    logger.info("reranker_loaded", model=self.reranker_model_name)
-                except Exception as rerank_err:
-                    logger.warning("reranker_init_failed", error=str(rerank_err))
-                    self.reranker_enabled = False
 
         logger.info(
             "embedding_service_initialized",
@@ -117,6 +105,24 @@ class EmbeddingService:
             collection_count=self.collection.count(),
             reranker=self.reranker_enabled,
         )
+
+    def _ensure_reranker_loaded(self) -> None:
+        """Lazily load the reranker only if requested and enabled."""
+        if not self.reranker_enabled or self._reranker is not None:
+            return
+        try:
+            # Re-import here to avoid import-time hard dependency
+            try:
+                from FlagEmbedding import FlagReranker as _FlagReranker  # type: ignore
+            except Exception as _imp_err:  # pragma: no cover
+                logger.warning("flagembedding_not_installed_reranker_disabled", error=str(_imp_err))
+                self.reranker_enabled = False
+                return
+            self._reranker = _FlagReranker(self.reranker_model_name, use_fp16=True)
+            logger.info("reranker_loaded", model=self.reranker_model_name)
+        except Exception as rerank_err:  # pragma: no cover
+            logger.warning("reranker_init_failed", error=str(rerank_err))
+            self.reranker_enabled = False
 
     def _embed_texts(self, texts: List[str]) -> List[List[float]]:
         """Embed a batch of texts using configured provider."""
@@ -260,6 +266,8 @@ class EmbeddingService:
                     })
 
             # Optional rerank using cross-encoder
+            if rerank:
+                self._ensure_reranker_loaded()
             if rerank and self.reranker_enabled and self._reranker and matches:
                 pairs = [[query, m["text"]] for m in matches]
                 try:

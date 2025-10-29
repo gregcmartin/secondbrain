@@ -44,6 +44,18 @@ echo ""
 echo "Installing Second Brain..."
 pip install -e .
 
+# Optional: Reranker extras (FlagEmbedding)
+echo ""
+read -p "Install optional AI reranker support (FlagEmbedding, ~2.2GB model download on first use)? [y/N] " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo "Installing reranker extras..."
+    # Install only the extra to avoid reinstalling all deps
+    pip install "FlagEmbedding>=1.2.11"
+    echo "✓ Reranker extras installed"
+    echo "  Note: The BAAI/bge-reranker-large model (~2.24GB) will download on first use."
+fi
+
 # Check for OpenAI API key
 echo ""
 if [ -f ".env" ]; then

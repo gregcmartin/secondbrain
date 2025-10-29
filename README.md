@@ -22,6 +22,7 @@ Second Brain captures your screen continuously, extracts text with local OCR, ge
 
 ---
 
+
 ## Quick Start
 
 ### Prerequisites
@@ -113,10 +114,17 @@ second-brain status
 - **App Statistics**: See which apps you used most
 - **Beautiful Design**: Gradient cards and responsive layout
 
+#### Screenshots
+
+![Chat Box – Ask Your Second Brain](assets/chat-box-screenshot.png)
+
+![Daily Overview – Summaries and Timeline](assets/daily-overview-screenshot.png)
+
 ### Search
 
 - **Full-Text Search**: Fast FTS5 with trigram tokenization
 - **Semantic Search**: Vector embeddings with Chroma + MiniLM
+- **AI Reranking (optional)**: Cross-encoder BAAI/bge-reranker-large for improved relevance
 - **Filters**: By app, date range, time
 - **CLI & UI**: Search from command line or Streamlit interface
 
@@ -198,7 +206,11 @@ second-brain reset --yes
 
 ## Configuration
 
-Edit `~/.config/second-brain/settings.json` or use environment variables:
+Use the Streamlit UI (Settings panel), or edit the JSON directly at:
+
+- `~/Library/Application Support/second-brain/config/settings.json`
+
+Changes from the UI are saved to this file and applied by the capture service on restart.
 
 ```json
 {
@@ -279,6 +291,16 @@ Edit `~/.config/second-brain/settings.json` or use environment variables:
 second-brain query "python code" --semantic --reranker
 ```
 
+**Install optional reranker dependency:**
+
+```bash
+# Recommended (installs extras defined in setup.py)
+pip install -e .[reranker]
+
+# or install the package directly
+pip install "FlagEmbedding>=1.2.11"
+```
+
 **To enable by default:**
 
 1. Run `second-brain ui`
@@ -288,12 +310,53 @@ second-brain query "python code" --semantic --reranker
 
 **Model Download:**
 - BAAI/bge-reranker-large (2.24 GB) downloads automatically on first use
-- Requires optional package: `pip install FlagEmbedding>=1.2.11`
+- Requires optional package: installed via `pip install -e .[reranker]` or `pip install FlagEmbedding>=1.2.11`
 - Completely optional - system works fine without it
 
 ---
 
 ## How It Works
+
+---
+
+## Development
+
+### Environment
+
+- Python: 3.11.7 (pyenv local is set; use `.venv311`)
+- Create/activate env:
+
+```bash
+pyenv install 3.11.7 -s
+pyenv local 3.11.7
+python -m venv .venv311
+source .venv311/bin/activate
+pip install -e .
+```
+
+### Tests
+
+```bash
+source .venv311/bin/activate
+PYTHONPATH=. pytest -q tests/test_database.py tests/test_capture.py
+```
+
+### Lint/format
+
+- Run ad-hoc:
+
+```bash
+flake8 src tests
+black -l 120 src tests
+```
+
+- Or enable pre-commit hooks:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
 
 ### 1. Continuous Capture
 - Captures screen at 1 FPS (or 0.2 FPS when idle)

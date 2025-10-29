@@ -5,7 +5,6 @@ import tempfile
 from pathlib import Path
 
 from src.second_brain.database import Database
-from src.second_brain.config import Config
 
 
 @pytest.fixture

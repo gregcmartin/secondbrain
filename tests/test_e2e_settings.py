@@ -73,7 +73,7 @@ def test_settings_persistence(page: Page):
     
     # Toggle frame deduplication
     checkbox = page.locator('input[type="checkbox"]').first
-    initial_state = checkbox.is_checked()
+    _initial_state = checkbox.is_checked()  # noqa: F841
     
     # Toggle it
     checkbox.click()
@@ -102,4 +102,3 @@ def streamlit_app():
     # Cleanup
     process.terminate()
     process.wait()
-

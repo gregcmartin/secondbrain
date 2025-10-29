@@ -1,11 +1,10 @@
 """Streamlit UI for Second Brain - Daily summaries and visual timeline."""
 
 import streamlit as st
-from datetime import datetime, timedelta, time
+from datetime import datetime, time
 from pathlib import Path
 import sqlite3
-from typing import List, Dict, Any
-import os
+from typing import List, Dict, Any, Optional
 
 # Import config system
 from second_brain.config import get_config
@@ -255,7 +254,7 @@ class SecondBrainUI:
         }
     
     @st.cache_data(ttl=60)
-    def get_frames_for_day(_self, date: datetime, app_filter: str = None, start_time=None, end_time=None, preview_per_hour: int = 10) -> Dict[int, List[Dict[str, Any]]]:
+    def get_frames_for_day(_self, date: datetime, app_filter: Optional[str] = None, start_time=None, end_time=None, preview_per_hour: int = 10) -> Dict[int, List[Dict[str, Any]]]:
         """Get frames for a specific day with filtering and lazy loading.
 
         Args:
@@ -299,8 +298,8 @@ class SecondBrainUI:
         """
         params = [start_ts, end_ts]
 
-        if app_filter and app_filter != "All":
-            query += " AND app_name = ?"
+        if app_filter:
+            query += " AND app_bundle_id = ?"
             params.append(app_filter)
 
         query += " ORDER BY timestamp ASC"
@@ -322,19 +321,23 @@ class SecondBrainUI:
         return frames_by_hour
 
     @st.cache_data(ttl=60)
-    def get_apps_for_day(_self, date: datetime) -> List[str]:
-        """Get list of apps used on a specific day."""
+    def get_apps_for_day(_self, date: datetime) -> Dict[str, str]:
+        """Get mapping of app names to bundle IDs for a specific day.
+        
+        Returns:
+            Dict mapping app_name -> app_bundle_id
+        """
         start_ts = int(date.replace(hour=0, minute=0, second=0).timestamp())
         end_ts = int(date.replace(hour=23, minute=59, second=59).timestamp())
 
         cursor = _self.conn.cursor()
         cursor.execute("""
-            SELECT DISTINCT app_name FROM frames
+            SELECT DISTINCT app_name, app_bundle_id FROM frames
             WHERE timestamp BETWEEN ? AND ?
             ORDER BY app_name
         """, (start_ts, end_ts))
 
-        return [row[0] for row in cursor.fetchall()]
+        return {row[0]: row[1] for row in cursor.fetchall()}
     
     @st.cache_data(ttl=60)
     def get_text_for_frame(_self, frame_id: str) -> List[Dict[str, Any]]:
@@ -652,14 +655,17 @@ class SecondBrainUI:
         st.sidebar.markdown("---")
         st.sidebar.header("🔍 Filters")
 
-        # App filter
-        available_apps = self.get_apps_for_day(selected_datetime)
-        app_filter = st.sidebar.selectbox(
+        # App filter - get app_name -> app_bundle_id mapping
+        app_mapping = self.get_apps_for_day(selected_datetime)
+        available_apps = list(app_mapping.keys())
+        app_filter_name = st.sidebar.selectbox(
             "Filter by App",
             options=["All"] + available_apps,
             index=0,
             help="Filter frames by application"
         )
+        # Convert app_name to app_bundle_id for database queries
+        app_filter = app_mapping.get(app_filter_name) if app_filter_name != "All" else None
 
         # Time range filter with proper time picker
         st.sidebar.subheader("Time Range")
@@ -670,7 +676,7 @@ class SecondBrainUI:
             end_time = st.time_input("End Time", value=time(23, 59, 59))
 
         # Preview limit control - up to 1000 frames per hour
-        preview_limit = st.sidebar.number_input(
+        _preview_limit = st.sidebar.number_input(  # noqa: F841
             "Frames per hour (max)",
             min_value=5,
             max_value=1000,
@@ -712,12 +718,14 @@ class SecondBrainUI:
                     disabled=not use_semantic,
                     help="Use AI-powered reranking for better relevance (requires model download)"
                 )
-                query_app_filter = st.selectbox(
+                query_app_filter_name = st.selectbox(
                     "Filter by App",
                     options=["All"] + available_apps,
                     key="query_app_filter",
                     help="Only search within specific app"
                 )
+                # Convert app_name to app_bundle_id for search queries
+                query_app_filter = app_mapping.get(query_app_filter_name) if query_app_filter_name != "All" else None
 
         # Execute search
         if query_text:
@@ -736,13 +744,14 @@ class SecondBrainUI:
                             embedding_service = EmbeddingService()
 
                             debug_info.append(f"Using semantic search with limit={result_limit}")
-                            debug_info.append(f"App filter: {query_app_filter}")
+                            debug_info.append(f"App filter name: {query_app_filter_name}")
+                            debug_info.append(f"App filter bundle ID: {query_app_filter}")
                             debug_info.append(f"Reranker: {use_reranker}")
 
                             matches = embedding_service.search(
                                 query=query_text,
                                 limit=result_limit,
-                                app_filter=query_app_filter if query_app_filter != "All" else None,
+                                app_filter=query_app_filter,
                                 rerank=use_reranker,
                             )
 
@@ -776,7 +785,7 @@ class SecondBrainUI:
                         debug_info.append("Using full-text search")
                         results = db.search_text(
                             query=query_text,
-                            app_filter=query_app_filter if query_app_filter != "All" else None,
+                            app_filter=query_app_filter,
                             start_timestamp=None,
                             end_timestamp=None,
                             limit=result_limit,
@@ -796,6 +805,154 @@ class SecondBrainUI:
 
                     db.close()
 
+                    # Generate AI answer from search results (for BOTH semantic and full-text search)
+                    ai_answer = None
+                    debug_info.append(f"Search results count: {len(search_results)}")
+                    if search_results and len(search_results) > 0:
+                        debug_info.append("Attempting to generate AI answer...")
+                        try:
+                            import os
+                            from openai import OpenAI
+                            
+                            api_key = os.getenv("OPENAI_API_KEY")
+                            if not api_key:
+                                st.error("❌ OPENAI_API_KEY not found in environment!")
+                                debug_info.append("No OpenAI API key found")
+                                raise ValueError("Missing OPENAI_API_KEY")
+                            
+                            openai_client = OpenAI(api_key=api_key)
+                            debug_info.append(f"OpenAI client initialized (key length: {len(api_key)})")
+                            
+                            # Prepare ENHANCED context from search results
+                            context_items = []
+                            apps_seen = set()
+                            
+                            # Group results by relevance and provide rich context
+                            # Sanitize function to avoid problematic control chars for LLMs
+                            def _sanitize_text(s: str) -> str:
+                                return "".join(
+                                    ch if (
+                                        ch == "\n" or 32 <= ord(ch) <= 126 or (ord(ch) >= 160 and ord(ch) not in (0xFFFF, 0xFFFE))
+                                    ) else " "
+                                    for ch in s
+                                )
+
+                            for i, result in enumerate(search_results[:40]):  # limit context size for reliability
+                                ts = datetime.fromtimestamp(result["timestamp"])
+                                app = result.get("app_name", "Unknown")
+                                window = result.get("window_title", "")
+                                text = result.get("text", "").strip()
+                                # score is calculated when rendering; no need to store here
+                                
+                                if not text:  # Skip empty text
+                                    continue
+                                
+                                apps_seen.add(app)
+                                
+                                # Format based on relevance
+                                relevance = "HIGH" if i < 5 else "MEDIUM" if i < 15 else "LOW"
+                                
+                                # Clean up and sanitize text; keep token budget controlled
+                                text = _sanitize_text(" ".join(text.split()))[:300]
+                                
+                                context_entry = f"""[RELEVANCE: {relevance}]
+Time: {ts.strftime('%Y-%m-%d %H:%M:%S')}
+Application: {app}
+Window: {window}
+Content:
+{text}"""
+                                
+                                context_items.append(context_entry)
+                            
+                            # Create structured context
+                            context_text = ("\n\n" + "=" * 50 + "\n\n").join(context_items)
+                            
+                            # Add summary of what apps were involved
+                            apps_summary = f"Applications involved: {', '.join(sorted(apps_seen))}"
+                            
+                            debug_info.append(f"Context prepared: {len(context_items)} text blocks, {len(apps_seen)} apps, {len(context_text)} chars")
+                            
+                            # Generate answer using GPT-5 (Responses API)
+                            model = "gpt-5"
+                            response = openai_client.responses.create(
+                                model=model,
+                                instructions=(
+                                    "You are an expert assistant helping a user recall their computer activities. "
+                                    "You have access to OCR-extracted text from their screen captures, organized by relevance to their query.\n\n"
+                                    "IMPORTANT CONTEXT:\n"
+                                    "- This is REAL TEXT that was visible on their screen, captured via OCR\n"
+                                    "- Text may contain typical OCR artifacts (minor typos, merged words, etc.)\n"
+                                    "- Higher relevance entries are more likely to contain the answer\n"
+                                    "- The text preserves actual content: code, commands, documents, web pages, etc.\n\n"
+                                    "Your task: Provide intelligent, contextual answers by analyzing patterns across multiple captures and understanding what the user was actually doing."
+                                ),
+                                input=(
+                                    f"Based on my screen activity, please answer: {query_text}\n\n"
+                                    f"{apps_summary}\n\n"
+                                    f"OCR Text from my screen (organized by relevance):\n{context_text}\n\n"
+                                    "INSTRUCTIONS FOR YOUR RESPONSE:\n"
+                                    "1. DIRECTLY answer the question first - be specific and actionable\n"
+                                    "2. Reference specific evidence from the text (quote relevant parts)\n"
+                                    "3. If you see patterns across multiple captures, identify the workflow\n"
+                                    "4. Include concrete details: file names, commands, code snippets, timestamps\n"
+                                    "5. If the text shows a progression of activity, describe what was being accomplished\n"
+                                    "6. Be conversational but precise - this is the user's actual work history\n\n"
+                                    "Remember: You're looking at the actual text from their screen. If they ask \"what did I do\", tell them specifically what the text shows they were doing. If they ask \"what did I change\", look for diffs, edits, or modifications in the text."
+                                ),
+                                max_output_tokens=2000,
+                            )
+                            
+                            ai_answer = getattr(response, "output_text", None)
+                            finish_reason = getattr(response, "status", None)
+                            debug_info.append(f"Generated AI answer using {model} (len={len(ai_answer) if ai_answer else 0}, finish_reason={finish_reason})")
+                            
+                            # Debug: Show what we got
+                            if not ai_answer or len(ai_answer.strip()) == 0:
+                                # Retry once with a shorter context to avoid truncation/garbage
+                                debug_info.append("Empty answer; retrying with condensed context (top 10, 200 chars each)")
+                                condensed_items = []
+                                for j, result in enumerate(search_results[:10]):
+                                    ts2 = datetime.fromtimestamp(result["timestamp"])
+                                    app2 = result.get("app_name", "Unknown")
+                                    window2 = result.get("window_title", "")
+                                    text2 = result.get("text", "").strip()
+                                    if not text2:
+                                        continue
+                                    text2 = _sanitize_text(" ".join(text2.split()))[:200]
+                                    condensed_items.append(
+                                        f"[{ts2.strftime('%Y-%m-%d %H:%M:%S')}] {app2} • {window2}\n{text2}"
+                                    )
+                                condensed_context = "\n\n".join(condensed_items)
+                                response2 = openai_client.responses.create(
+                                    model=model,
+                                    instructions=(
+                                        "You are a helpful assistant that answers questions using short evidence snippets from OCR of the user's screen."
+                                    ),
+                                    input=(
+                                        f"Question: {query_text}\n\nEvidence:\n{condensed_context}\n\nAnswer succinctly and cite snippets."
+                                    ),
+                                    max_output_tokens=600,
+                                )
+                                ai_answer = getattr(response2, "output_text", None)
+                                finish_reason2 = getattr(response2, "status", None)
+                                debug_info.append(f"Retry finish_reason={finish_reason2}, len={len(ai_answer) if ai_answer else 0}")
+                                if not ai_answer or len(ai_answer.strip()) == 0:
+                                    st.warning(f"⚠️ {model} returned an empty answer")
+                                    debug_info.append(f"Empty answer received from {model} after retry")
+                                    ai_answer = None  # Clear it so we don't show empty box
+                            else:
+                                debug_info.append(f"AI answer generated successfully ({len(ai_answer)} chars)")
+                            
+                        except Exception as e:
+                            debug_info.append(f"Failed to generate AI answer: {str(e)}")
+                            st.error(f"❌ Could not generate AI answer: {str(e)}")
+                            # Check for common issues
+                            if "api_key" in str(e).lower():
+                                st.error("🔑 Please set OPENAI_API_KEY environment variable")
+                            elif "model" in str(e).lower():
+                                st.error("🤖 Model issue - the configured model may not be available")
+                            ai_answer = None
+
                     # Display results
                     if not search_results:
                         st.warning("🤷 No results found. Try different keywords or try full-text search!")
@@ -803,44 +960,64 @@ class SecondBrainUI:
                             for info in debug_info:
                                 st.text(info)
                     else:
-                        st.success(f"✨ Found {len(search_results)} results")
-
-                        for i, result in enumerate(search_results):
-                            timestamp = datetime.fromtimestamp(result["timestamp"])
-
-                            # Calculate display score
-                            score_text = ""
-                            if result.get("score") is not None:
-                                if result["method"] == "semantic":
-                                    score_label = "Similarity"
-                                    score_val = result["score"]
-                                else:
-                                    score_label = "Relevance"
-                                    score_val = 1 / (1 + result["score"]) if result["score"] >= 0 else result["score"]
-                                score_text = f"**{score_label}:** {score_val:.1%}"
-
-                            # Result card
-                            with st.container():
-                                st.markdown(f"""
-                                <div style="background: rgba(102, 126, 234, 0.1); padding: 1.5rem; border-radius: 0.75rem; margin-bottom: 1rem; border-left: 4px solid #667eea;">
-                                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
-                                        <h4 style="color: #667eea; margin: 0;">{result['window_title']}</h4>
-                                        <span style="color: #aaa; font-size: 0.85rem;">{timestamp.strftime('%Y-%m-%d %H:%M:%S')}</span>
-                                    </div>
-                                    <div style="margin-bottom: 0.75rem;">
-                                        <span style="color: #aaa; font-size: 0.9rem;">{result['app_name']}</span>
-                                        {f'<span style="color: #888; margin-left: 1rem; font-size: 0.85rem;">{score_text}</span>' if score_text else ''}
-                                    </div>
-                                    <div style="color: #e0e0e0; line-height: 1.6;">
-                                        {result['text'][:300]}{'...' if len(result['text']) > 300 else ''}
-                                    </div>
+                        # Display AI answer prominently at the top
+                        if ai_answer:
+                            import html
+                            safe_answer = html.escape(ai_answer).replace('\n', '<br>')
+                            st.markdown(f"""
+                            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);\n                                        padding: 2.5rem; border-radius: 1.5rem; color: white; margin-bottom: 2rem;
+                                        box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);">
+                                <h2 style="color: white; margin: 0 0 1rem 0;">🤖 AI Answer</h2>
+                                <div style="font-size: 1.1rem; line-height: 1.8; color: white;">
+                                    {safe_answer}
                                 </div>
-                                """, unsafe_allow_html=True)
+                            </div>
+                            """, unsafe_allow_html=True)
+                        
+                        # Show debug info if requested
+                        if st.checkbox("🐛 Show Debug Info", value=False, key="show_debug"):
+                            with st.expander("Debug Information", expanded=True):
+                                for info in debug_info:
+                                    st.text(info)
+                        
+                        # Show search results in expander
+                        with st.expander(f"📋 View {len(search_results)} Source Frames", expanded=False):
+                            for i, result in enumerate(search_results):
+                                timestamp = datetime.fromtimestamp(result["timestamp"])
 
-                                # View Frame button
-                                if st.button(f"👁️ View Frame", key=f"view_result_{i}"):
-                                    st.session_state['selected_frame'] = result['frame_id']
-                                    st.rerun()
+                                # Calculate display score
+                                score_text = ""
+                                if result.get("score") is not None:
+                                    if result["method"] == "semantic":
+                                        score_label = "Similarity"
+                                        score_val = result["score"]
+                                    else:
+                                        score_label = "Relevance"
+                                        score_val = 1 / (1 + result["score"]) if result["score"] >= 0 else result["score"]
+                                    score_text = f"**{score_label}:** {score_val:.1%}"
+
+                                # Result card
+                                with st.container():
+                                    st.markdown(f"""
+                                    <div style="background: rgba(102, 126, 234, 0.1); padding: 1.5rem; border-radius: 0.75rem; margin-bottom: 1rem; border-left: 4px solid #667eea;">
+                                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
+                                            <h4 style="color: #667eea; margin: 0;">{result['window_title']}</h4>
+                                            <span style="color: #aaa; font-size: 0.85rem;">{timestamp.strftime('%Y-%m-%d %H:%M:%S')}</span>
+                                        </div>
+                                        <div style="margin-bottom: 0.75rem;">
+                                            <span style="color: #aaa; font-size: 0.9rem;">{result['app_name']}</span>
+                                            {f'<span style="color: #888; margin-left: 1rem; font-size: 0.85rem;">{score_text}</span>' if score_text else ''}
+                                        </div>
+                                        <div style="color: #e0e0e0; line-height: 1.6;">
+                                            {result['text'][:300]}{'...' if len(result['text']) > 300 else ''}
+                                        </div>
+                                    </div>
+                                    """, unsafe_allow_html=True)
+
+                                    # View Frame button
+                                    if st.button("👁️ View Frame", key=f"view_result_{i}"):
+                                        st.session_state['selected_frame'] = result['frame_id']
+                                        st.rerun()
 
                 except Exception as e:
                     st.error(f"❌ Search error: {str(e)}")
@@ -958,7 +1135,7 @@ class SecondBrainUI:
                                                 caption=f"{datetime.fromtimestamp(frame['timestamp']).strftime('%H:%M:%S')}",
                                                 use_container_width=True
                                             )
-                                            if st.button(f"View Details", key=f"btn_{summary['start_timestamp']}_{hour}_{frame['frame_id']}"):
+                                            if st.button("View Details", key=f"btn_{summary['start_timestamp']}_{hour}_{frame['frame_id']}"):
                                                 st.session_state['selected_frame'] = frame['frame_id']
                                                 st.rerun()
             else:

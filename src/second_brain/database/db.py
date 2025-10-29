@@ -4,7 +4,7 @@ import sqlite3
 import zlib
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 import structlog
 
 from ..config import Config
@@ -322,7 +322,7 @@ class Database:
         """
         # Build query with filters
         sql = """
-            SELECT 
+            SELECT
                 f.frame_id,
                 f.timestamp,
                 f.window_title,
@@ -399,7 +399,7 @@ class Database:
         """
         cursor = self.conn.cursor()
         cursor.execute("""
-            SELECT 
+            SELECT
                 w.app_bundle_id,
                 w.app_name,
                 w.first_seen,
@@ -515,16 +515,18 @@ class Database:
         Returns:
             List of summary dictionaries
         """
-        from datetime import datetime
         start_ts = int(date.replace(hour=0, minute=0, second=0).timestamp())
         end_ts = int(date.replace(hour=23, minute=59, second=59).timestamp())
         
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT * FROM summaries
             WHERE start_timestamp >= ? AND end_timestamp <= ?
             ORDER BY start_timestamp ASC
-        """, (start_ts, end_ts))
+            """,
+            (start_ts, end_ts),
+        )
         
         return [dict(row) for row in cursor.fetchall()]
     
