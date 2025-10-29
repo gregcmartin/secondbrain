@@ -132,7 +132,7 @@ Provide a brief 2-3 sentence summary."""
                         "content": prompt
                     }
                 ],
-                max_completion_tokens=300,  # GPT-5 requires max_completion_tokens (OpenAI API change)
+                max_completion_tokens=2000,  # GPT-5 requires max_completion_tokens (OpenAI API change)
                 # GPT-5 only supports temperature=1 (default), so we omit it
             )
             
