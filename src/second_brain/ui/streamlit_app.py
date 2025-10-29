@@ -140,13 +140,25 @@ class SecondBrainUI:
         Returns:
             Dict mapping hour -> list of frames (limited to preview_per_hour)
         """
+        # Ensure we have time objects, not datetime
         if start_time is None:
             start_time = time(0, 0)
+        elif isinstance(start_time, datetime):
+            start_time = start_time.time()
+
         if end_time is None:
             end_time = time(23, 59, 59)
+        elif isinstance(end_time, datetime):
+            end_time = end_time.time()
 
-        start_dt = datetime.combine(date.date(), start_time)
-        end_dt = datetime.combine(date.date(), end_time)
+        # Get date object from datetime
+        if isinstance(date, datetime):
+            date_obj = date.date()
+        else:
+            date_obj = date
+
+        start_dt = datetime.combine(date_obj, start_time)
+        end_dt = datetime.combine(date_obj, end_time)
         start_ts = int(start_dt.timestamp())
         end_ts = int(end_dt.timestamp())
 
