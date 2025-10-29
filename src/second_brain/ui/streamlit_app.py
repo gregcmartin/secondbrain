@@ -648,6 +648,7 @@ class SecondBrainUI:
                             # Show details on click
                             if st.button(f"View Details", key=f"btn_{frame['frame_id']}"):
                                 st.session_state['selected_frame'] = frame['frame_id']
+                                st.rerun()
 
                 # Show "more available" message if there are more frames
                 if showing_count < total_frames:
@@ -656,6 +657,18 @@ class SecondBrainUI:
         # Selected frame details
         if 'selected_frame' in st.session_state:
             st.markdown("---")
+
+            # JavaScript to scroll to this section
+            st.markdown('<div id="frame-details"></div>', unsafe_allow_html=True)
+            st.markdown("""
+                <script>
+                    const element = document.getElementById('frame-details');
+                    if (element) {
+                        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                </script>
+            """, unsafe_allow_html=True)
+
             st.subheader("🔍 Frame Details")
             
             frame_id = st.session_state['selected_frame']
