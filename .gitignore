@@ -141,3 +141,4 @@ docs/testing/TEST_RESULTS.md
 docs/testing/*_test*.md
 *.test.md
 *_test_results.md
+!assets/*.png
