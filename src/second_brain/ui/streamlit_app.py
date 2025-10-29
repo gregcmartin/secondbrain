@@ -127,21 +127,28 @@ class SecondBrainUI:
             'total_chars': total_chars,
         }
     
-    def get_frames_for_day(self, date: datetime, app_filter: str = None, start_hour: int = 0, end_hour: int = 23, preview_per_hour: int = 10) -> Dict[int, List[Dict[str, Any]]]:
+    def get_frames_for_day(self, date: datetime, app_filter: str = None, start_time=None, end_time=None, preview_per_hour: int = 10) -> Dict[int, List[Dict[str, Any]]]:
         """Get frames for a specific day with filtering and lazy loading.
 
         Args:
             date: Date to query
             app_filter: Optional app name to filter by
-            start_hour: Start hour (0-23)
-            end_hour: End hour (0-23)
+            start_time: Start time (datetime.time object)
+            end_time: End time (datetime.time object)
             preview_per_hour: Number of frames to load per hour as preview
 
         Returns:
             Dict mapping hour -> list of frames (limited to preview_per_hour)
         """
-        start_ts = int(date.replace(hour=start_hour, minute=0, second=0).timestamp())
-        end_ts = int(date.replace(hour=end_hour, minute=59, second=59).timestamp())
+        if start_time is None:
+            start_time = datetime.min.time()
+        if end_time is None:
+            end_time = datetime.max.time()
+
+        start_dt = datetime.combine(date.date(), start_time)
+        end_dt = datetime.combine(date.date(), end_time)
+        start_ts = int(start_dt.timestamp())
+        end_ts = int(end_dt.timestamp())
 
         cursor = self.conn.cursor()
 
@@ -491,25 +498,22 @@ class SecondBrainUI:
             help="Filter frames by application"
         )
 
-        # Time range filter
+        # Time range filter with proper time picker
+        st.sidebar.subheader("Time Range")
         col1, col2 = st.sidebar.columns(2)
         with col1:
-            start_hour = st.number_input("Start Hour", min_value=0, max_value=23, value=0, step=1)
+            start_time = st.time_input("Start Time", value=datetime.min.time())
         with col2:
-            end_hour = st.number_input("End Hour", min_value=0, max_value=23, value=23, step=1)
+            end_time = st.time_input("End Time", value=datetime.max.time())
 
-        if start_hour > end_hour:
-            st.sidebar.error("Start hour must be <= end hour")
-            return
-
-        # Preview limit control
-        preview_limit = st.sidebar.slider(
-            "Frames per hour (preview)",
+        # Preview limit control - up to 1000 frames per hour
+        preview_limit = st.sidebar.number_input(
+            "Frames per hour (max)",
             min_value=5,
-            max_value=100,
+            max_value=1000,
             value=10,
             step=5,
-            help="Number of frames to display per hour. Higher values load more data."
+            help="Number of frames to display per hour. Set to 1000 to see all frames."
         )
         
         # Summary cards - show AI-generated summaries from database
@@ -588,8 +592,8 @@ class SecondBrainUI:
         frames_by_hour = self.get_frames_for_day(
             selected_datetime,
             app_filter=app_filter,
-            start_hour=int(start_hour),
-            end_hour=int(end_hour),
+            start_time=start_time,
+            end_time=end_time,
             preview_per_hour=preview_limit
         )
 
